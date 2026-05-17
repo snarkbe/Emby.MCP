@@ -73,8 +73,7 @@ sys.stderr = io.TextIOWrapper(sys.stderr.buffer, line_buffering=True, encoding='
 mcp_context = {}
 mcp_context['search_item_chunking'] = {}
 
-# Create the MCP server
-mcp = FastMCP(name=MY_NAME, instructions=MY_PURPOSE)
+# MCP server is instantiated below after app_lifespan is defined (it needs the lifespan handler).
 
 #==================================================
 # Functions for Interacting with MCP Clients
@@ -157,8 +156,8 @@ async def app_lifespan(server: FastMCP) ->AsyncIterator[dict]:
         else:
             print(f"ERROR: logout from media server failed: {logout_result['error']}", file=sys.stderr)
 
-# Pass lifespan to server
-mcp = FastMCP(name=MY_NAME, lifespan=app_lifespan)
+# Create the MCP server with lifespan handler
+mcp = FastMCP(name=MY_NAME, instructions=MY_PURPOSE, lifespan=app_lifespan)
 
 def str_to_bool(s: str) -> bool:
     """
@@ -191,7 +190,7 @@ def retrieve_user_list() -> str:
     """
 
     ctx = mcp.get_context()
-    auth_context = ctx.request_context.lifespan_context
+    auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
     e_api_client = auth_context['api_client']
 
     result = get_users(e_api_client)
@@ -222,7 +221,7 @@ def retrieve_library_list() -> str:
     """
 
     ctx = mcp.get_context()
-    auth_context = ctx.request_context.lifespan_context
+    auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
     e_api_client = auth_context['api_client']
 
     library_list = get_library_list(e_api_client)
@@ -252,7 +251,7 @@ def select_library(library_name: str = "") -> str:
 
     if library_name is not None or library_name != "":
         ctx = mcp.get_context()
-        auth_context = ctx.request_context.lifespan_context
+        auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
         available_libraries = auth_context['available_libraries']
 
         if available_libraries is None or len(available_libraries) == 0:
@@ -290,7 +289,7 @@ def retrieve_current_library() -> str:
         type (str): library media type
     """
     ctx = mcp.get_context()
-    auth_context = ctx.request_context.lifespan_context
+    auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
     current_library = auth_context['current_library']    
 
     if current_library is not None:
@@ -315,7 +314,7 @@ def retrieve_genre_list() -> str:
     """
 
     ctx = mcp.get_context()
-    auth_context = ctx.request_context.lifespan_context
+    auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
     current_library = auth_context['current_library']
 
     if current_library is not None:
@@ -384,7 +383,7 @@ def search_for_item(title_or_album: Optional[str] = "",
     """
 
     ctx = mcp.get_context()
-    auth_context = ctx.request_context.lifespan_context
+    auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
     current_library = auth_context['current_library']
 
     if current_library is not None:
@@ -480,7 +479,7 @@ def retrieve_next_search_chunk() -> str:
     """
     
     ctx = mcp.get_context()
-    auth_context = ctx.request_context.lifespan_context
+    auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
     search_results = auth_context['search_item_chunking']
 
     # Safely extract control data 
@@ -590,7 +589,7 @@ def create_playlist(playlist_name: str, media_type: str = "Audio", description: 
     """
 
     ctx = mcp.get_context()
-    auth_context = ctx.request_context.lifespan_context
+    auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
     e_api_client = auth_context['api_client']
     user_id = auth_context['user_id']
     available_libraries = auth_context['available_libraries']
@@ -642,7 +641,7 @@ def modify_playlist_name(playlist_id: str, new_name: Optional[str] = "", new_des
     """
 
     ctx = mcp.get_context()
-    auth_context = ctx.request_context.lifespan_context
+    auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
     e_api_client = auth_context['api_client']
     user_id = auth_context['user_id']
     available_libraries = auth_context['available_libraries']
@@ -699,7 +698,7 @@ def retrieve_playlist_list(playlist_id: Optional[str] = "") -> str:
     """
 
     ctx = mcp.get_context()
-    auth_context = ctx.request_context.lifespan_context
+    auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
     e_api_client = auth_context['api_client']
     user_id = auth_context['user_id']
     available_libraries = auth_context['available_libraries']
@@ -762,7 +761,7 @@ def retrieve_playlist_items(playlist_id: str) -> str:
     """
 
     ctx = mcp.get_context()
-    auth_context = ctx.request_context.lifespan_context
+    auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
     e_api_client = auth_context['api_client']
     user_id = auth_context['user_id']
 
@@ -790,7 +789,7 @@ def add_items_to_playlist(playlist_id: str, item_ids: str) -> str:
     """
 
     ctx = mcp.get_context()
-    auth_context = ctx.request_context.lifespan_context
+    auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
     e_api_client = auth_context['api_client']
     user_id = auth_context['user_id']
 
@@ -818,7 +817,7 @@ def remove_items_from_playlist(playlist_id: str, playlist_item_numbers: str) -> 
     """
 
     ctx = mcp.get_context()
-    auth_context = ctx.request_context.lifespan_context
+    auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
     e_api_client = auth_context['api_client']
     user_id = auth_context['user_id']
 
@@ -850,7 +849,7 @@ def reorder_items_on_playlist(playlist_id: str, playlist_item_number: str, playl
     """
 
     ctx = mcp.get_context()
-    auth_context = ctx.request_context.lifespan_context
+    auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
     e_api_client = auth_context['api_client']
     user_id = auth_context['user_id']
 
@@ -877,7 +876,7 @@ def share_playlist_public(playlist_id: str) -> str:
     """
 
     ctx = mcp.get_context()
-    auth_context = ctx.request_context.lifespan_context
+    auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
     e_api_client = auth_context['api_client']
 
     result = set_playlist_sharing(e_api_client, playlist_id, 'Public')
@@ -911,7 +910,7 @@ def share_playlist_user_access(playlist_id: str, user_ids: str, access_level:str
         access_level = 'ManageDelete' # the actual Emby access name
 
     ctx = mcp.get_context()
-    auth_context = ctx.request_context.lifespan_context
+    auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
     e_api_client = auth_context['api_client']
 
     user_id_list = user_ids.split(",")
@@ -941,7 +940,7 @@ def stop_sharing_playlist(playlist_id: str) -> str:
     """
 
     ctx = mcp.get_context()
-    auth_context = ctx.request_context.lifespan_context
+    auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
     e_api_client = auth_context['api_client']
 
     result = set_playlist_sharing(e_api_client, playlist_id, 'Private')
@@ -989,7 +988,7 @@ def retrieve_player_list(media_type: Optional[str] = "") -> str:
     """
 
     ctx = mcp.get_context()
-    auth_context = ctx.request_context.lifespan_context
+    auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
     e_api_client = auth_context['api_client']
     user_id = auth_context['user_id']
 
@@ -1033,7 +1032,7 @@ def retrieve_player_queue(session_id: str) -> str:
     """
 
     ctx = mcp.get_context()
-    auth_context = ctx.request_context.lifespan_context
+    auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
     e_api_client = auth_context['api_client']
     user_id = auth_context['user_id']
 
@@ -1066,7 +1065,7 @@ def control_media_player(session_id: str, command: str, item_ids: Optional[str] 
     """
 
     ctx = mcp.get_context()
-    auth_context = ctx.request_context.lifespan_context
+    auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
     e_api_client = auth_context['api_client']
     user_id = auth_context['user_id']
 

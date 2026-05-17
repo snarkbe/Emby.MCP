@@ -128,11 +128,11 @@ async def app_lifespan(server: FastMCP) ->AsyncIterator[dict]:
         load_dotenv(env_file, override=True)
         server_url = os.getenv("EMBY_SERVER_URL")
         username = os.getenv("EMBY_USERNAME")
-        password = os.getenv("EMBY_PASSWORD")
+        api_key = os.getenv("EMBY_API_KEY")
         verify_ssl = str_to_bool(os.getenv("EMBY_VERIFY_SSL", "True"))
         max_chunk_size = os.getenv("LLM_MAX_ITEMS")
-        if server_url == None or username == None or password == None:
-            print("Fatal error, missing required variables. Ensure the .env file contains EMBY_SERVER_URL, EMBY_USERNAME, EMBY_PASSWORD", file=sys.stderr)
+        if server_url == None or username == None or api_key == None:
+            print("Fatal error, missing required variables. Ensure the .env file contains EMBY_SERVER_URL, EMBY_USERNAME, EMBY_API_KEY", file=sys.stderr)
             sys.exit(1)
     else:
         print("Fatal error, cannot find the .env file. Ensure that it exists in the same directory as script.", file=sys.stderr)
@@ -141,7 +141,7 @@ async def app_lifespan(server: FastMCP) ->AsyncIterator[dict]:
     # Login to Emby server
     device_name = MY_HOSTNAME + " (" + MY_PLATFORM + ")"  # shown in Emby server logs & devices page
     client_name = f"{MY_NAME} for AI"  # shown in Emby server logs & devices page
-    auth_context = authenticate_with_emby(server_url, username, password, client_name, MY_VERSION, device_name, verify_ssl)
+    auth_context = authenticate_with_emby_apikey(server_url, api_key, username, client_name, MY_VERSION, device_name, verify_ssl)
     if auth_context['success']:
         # Store the authenticated API client and other default context data
         e_api_client = auth_context['api_client']
@@ -1115,20 +1115,20 @@ if __name__ == "__main__":
             load_dotenv(env_file, override=True)
             server_url = os.getenv("EMBY_SERVER_URL")
             username = os.getenv("EMBY_USERNAME")
-            password = os.getenv("EMBY_PASSWORD")
+            api_key = os.getenv("EMBY_API_KEY")
             verify_ssl = str_to_bool(os.getenv("EMBY_VERIFY_SSL", "True"))
             max_chunk_size = os.getenv("LLM_MAX_ITEMS")
-            if server_url == None or username == None or password == None:
-                print("Fatal error, missing required variables. Ensure the .env file contains EMBY_SERVER_URL, EMBY_USERNAME, EMBY_PASSWORD", file=sys.stderr)
+            if server_url == None or username == None or api_key == None:
+                print("Fatal error, missing required variables. Ensure the .env file contains EMBY_SERVER_URL, EMBY_USERNAME, EMBY_API_KEY", file=sys.stderr)
                 sys.exit(1)
         else:
             print("Fatal error, cannot find the .env file. Ensure that it exists in the same directory as script.", file=sys.stderr)
             sys.exit(1)
-        
+
         # Login to Emby server
         device_name = MY_HOSTNAME + " (" + MY_PLATFORM + ")"  # shown in Emby server logs & devices page
         client_name = f"{MY_NAME}"  # shown in Emby server logs & devices page
-        result = authenticate_with_emby(server_url, username, password, client_name, MY_VERSION, device_name, verify_ssl)
+        result = authenticate_with_emby_apikey(server_url, api_key, username, client_name, MY_VERSION, device_name, verify_ssl)
         if result['success']:
             e_api_client = result['api_client']
             print(f"Logon to media server was successful.", file=sys.stderr)

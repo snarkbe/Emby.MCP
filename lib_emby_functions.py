@@ -113,6 +113,67 @@ def authenticate_with_emby(server_url: str, username: str, password: str, client
 
 #--------------------------------------------------
 
+def authenticate_with_emby_apikey(server_url: str, api_key: str, username: str, client_name: str = "EmbyPythonClient", client_version: str = "1.0", device_name: str = "EmbyPythonDevice", verify_ssl: Optional[bool] = True) -> dict:
+    """
+    Authenticate against Emby using a long-lived API key (generated in
+    Emby admin: Advanced -> API Keys) instead of a username/password pair.
+    The username is still required to resolve the user_id used by tools that
+    are scoped to a specific Emby user.
+
+    Args:
+        server_url (str): The Emby server URL (e.g., "http://localhost:8096")
+        api_key (str): An API key generated in the Emby admin panel.
+        username (str): Username whose user_id should be used for user-scoped calls.
+        client_name (str): Name of your client application (shown in Emby server logs & devices page)
+        client_version (str): Version of your client application (shown in Emby server logs)
+        device_name (str): Device name (shown in Emby server logs & devices page)
+        verify_ssl (bool, optional): Whether to verify SSL certificates. Defaults to True.
+
+    Returns:
+        dict: Same shape as authenticate_with_emby() so the caller can swap freely.
+    """
+
+    config = emby_client.Configuration()
+    config.host = server_url
+    if verify_ssl is None:
+        verify_ssl = True
+    config.verify_ssl = verify_ssl
+
+    e_api_client = emby_client.ApiClient(configuration=config)
+    e_api_client.configuration.api_key['api_key'] = api_key
+
+    # Identify ourselves so this connection shows up under Emby's Devices page
+    # (same convention as the username/password flow).
+    device_id = uuid.uuid4()
+    authorization_header = f'Emby UserId="", Client="{client_name}", Device="{device_name}", DeviceId="{device_id}", Version="{client_version}"'
+    e_api_client.set_default_header('X-Emby-Authorization', authorization_header)
+
+    # Resolve user_id from username (most MCP tools require it).
+    user_result = get_users(e_api_client, user_name=username)
+    if not user_result['success']:
+        return {
+            'success': False,
+            'error': f"API key accepted but failed to list users: {user_result['error']}"
+        }
+    if not user_result['users']:
+        return {
+            'success': False,
+            'error': f"User '{username}' not found on Emby server. Check EMBY_USERNAME matches an existing Emby user."
+        }
+
+    user = user_result['users'][0]
+    return {
+        'success': True,
+        'access_token': api_key,
+        'user_id': user['user_id'],
+        'user_info': user,
+        'session_info': None,
+        'server_url': server_url,
+        'api_client': e_api_client
+    }
+
+#--------------------------------------------------
+
 def create_authenticated_client(server_url: str, access_token: str) ->object:
     """
     Create an authenticated API client using an existing access token

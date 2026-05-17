@@ -47,8 +47,6 @@ from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
 from mcp.server.fastmcp import FastMCP, Context
 from lib_emby_functions import *
-if MY_DEBUG:
-    from lib_emby_debugging import test_emby_functions
 
 def str_to_bool(s: str) -> bool:
     return str(s).strip().lower() in ("true", "1", "yes", "y", "on")
@@ -143,8 +141,7 @@ async def app_lifespan(server: FastMCP) ->AsyncIterator[dict]:
     client_name = f"{MY_NAME} for AI"  # shown in Emby server logs & devices page
     auth_context = authenticate_with_emby_apikey(server_url, api_key, username, client_name, MY_VERSION, device_name, verify_ssl)
     if auth_context['success']:
-        # Store the authenticated API client and other default context data
-        e_api_client = auth_context['api_client']
+        # Store other default context data; the API client is already in auth_context.
         auth_context['available_libraries'] = []
         auth_context['current_library'] = {}
         auth_context['max_chunk_size'] = max_chunk_size
@@ -160,13 +157,11 @@ async def app_lifespan(server: FastMCP) ->AsyncIterator[dict]:
         yield auth_context
  
     finally:
-        # Cleanup and logout of Emby on shutdown
-        e_api_client = auth_context['api_client']  
-        logout_result = logout_from_emby(e_api_client)
-        if logout_result['success']:
-            print("Logout from media server was successful", file=sys.stderr)
-        else:
-            print(f"ERROR: logout from media server failed: {logout_result['error']}", file=sys.stderr)
+        # No logout: with an API-key login, /Sessions/Logout revokes the key
+        # itself (Emby treats it as the token for the call), so the key
+        # would be unusable on the next run. The API key is long-lived
+        # and managed via the Emby admin UI, not via session logout.
+        pass
 
 # Create the MCP server with lifespan handler
 mcp = FastMCP(name=MY_NAME, instructions=MY_PURPOSE, lifespan=app_lifespan)
@@ -1101,8 +1096,9 @@ def control_media_player(session_id: str, command: str, item_ids: Optional[str] 
 
 if __name__ == "__main__":
 
-    if MY_DEBUG and 'test_emby_functions' in globals() and callable(globals()['test_emby_functions']):
+    if MY_DEBUG:
         # If in debug mode, run interactive Emby functionality tests (see lib_emby_debugging.py)
+        from lib_emby_debugging import test_emby_functions
         test_emby_functions(MY_NAME, MY_VERSION, MY_PLATFORM, MY_HOSTNAME)
 
     else:
@@ -1145,13 +1141,7 @@ if __name__ == "__main__":
             print(f"ERROR: failed to retrieve library list: {result['error']}", file=sys.stderr)
             sys.exit(2)
 
-        # Log out 
-        result = logout_from_emby(e_api_client)
-        if result['success']:
-            print("Logout from media server was successful", file=sys.stderr)
-        else:
-            print(f"ERROR: logout from media server failed: {result['error']}", file=sys.stderr)
-            sys.exit(2)
+        # No logout: with an API-key login, /Sessions/Logout revokes the key itself.
 
         print(f"Startup checks have completed.\n", file=sys.stderr)
         print(f"Running Emby.MCP in standalone mode, press CTRL-C to exit.\n", file=sys.stderr)

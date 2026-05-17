@@ -50,12 +50,22 @@ from lib_emby_functions import *
 if MY_DEBUG:
     from lib_emby_debugging import test_emby_functions
 
+def str_to_bool(s: str) -> bool:
+    return str(s).strip().lower() in ("true", "1", "yes", "y", "on")
+
 # Some statements about the script
 MY_NAME = "Emby.MCP"
 MY_VERSION = "1.0.2"
-MY_PURPOSE = """These MCP tools allow you to control an Emby media server. Using them you can retrieve
-a list of libraries, genres, playlists, audio & video items, and player sessions. 
-You can add items to playlists and play, pause and stop itens on a player session."""
+MY_READONLY = str_to_bool(os.getenv("EMBY_READONLY", "False"))
+MY_PURPOSE = (
+    "These MCP tools allow you to query an Emby media server in read-only mode. Using them you can retrieve"
+    " a list of libraries, genres, playlists, audio & video items, and player sessions."
+    " Playlist and player control tools are disabled in read-only mode."
+    if MY_READONLY else
+    "These MCP tools allow you to control an Emby media server. Using them you can retrieve"
+    " a list of libraries, genres, playlists, audio & video items, and player sessions."
+    " You can add items to playlists and play, pause and stop items on a player session."
+)
 MY_LICENSE = """Emby.MCP Copyright (C) 2025 Dominic Search <code@angeltek.co.uk>
 This program comes with ABSOLUTELY NO WARRANTY. This is free software, and you are 
 welcome to redistribute it under certain conditions; see LICENSE.txt for details."""
@@ -140,6 +150,8 @@ async def app_lifespan(server: FastMCP) ->AsyncIterator[dict]:
         auth_context['max_chunk_size'] = max_chunk_size
         auth_context['search_item_chunking'] = {}
         print(f"Logon to media server was successful. \n\n{MY_LICENSE}", file=sys.stderr)
+        if MY_READONLY:
+            print("Read-only mode is enabled. Playlist and player control tools are not available.", file=sys.stderr)
     else:
         print(f"Fatal ERROR: login to media server failed: {auth_context['error']}", file=sys.stderr)
         sys.exit(1)
@@ -159,17 +171,11 @@ async def app_lifespan(server: FastMCP) ->AsyncIterator[dict]:
 # Create the MCP server with lifespan handler
 mcp = FastMCP(name=MY_NAME, instructions=MY_PURPOSE, lifespan=app_lifespan)
 
-def str_to_bool(s: str) -> bool:
-    """
-    Casts a string to a boolean value.
-
-    Args:
-        String s: The string to convert to a boolean.
-    
-    Returns:
-        Bool: True if the string is one of "true", "1", "yes", "y", or "on" (case-insensitive), otherwise False.
-    """
-    return str(s).strip().lower() in ("true", "1", "yes", "y", "on")
+def write_tool(func):
+    """Only registers the function as an MCP tool when not in read-only mode."""
+    if not MY_READONLY:
+        return mcp.tool()(func)
+    return func
 
 #--------------------------------------------------
 # Userlist Tools
@@ -570,7 +576,7 @@ def retrieve_next_search_chunk() -> str:
 # Playlist Tools
 #-------------------------
 
-@mcp.tool()
+@write_tool
 def create_playlist(playlist_name: str, media_type: str = "Audio", description: Optional[str] = "", item_ids: Optional[str] = "") -> str:
     """
     Create a new playlist on the Emby server with the supplied name, optional description and optional items to add.
@@ -626,7 +632,7 @@ def create_playlist(playlist_name: str, media_type: str = "Audio", description: 
 
 #--------------------------------------------------
 
-@mcp.tool()
+@write_tool
 def modify_playlist_name(playlist_id: str, new_name: Optional[str] = "", new_description: Optional[str] = "") -> str:
     """
     Modifies an existing playlist on the Emby server with the supplied new name and/or new description.
@@ -775,7 +781,7 @@ def retrieve_playlist_items(playlist_id: str) -> str:
 
 #--------------------------------------------------
 
-@mcp.tool()
+@write_tool
 def add_items_to_playlist(playlist_id: str, item_ids: str) -> str:
     """
     Adds one or more items to the end of an existing playlist on the Emby server.
@@ -803,7 +809,7 @@ def add_items_to_playlist(playlist_id: str, item_ids: str) -> str:
 
 #--------------------------------------------------
 
-@mcp.tool()
+@write_tool
 def remove_items_from_playlist(playlist_id: str, playlist_item_numbers: str) -> str:
     """
     Removes one or more items from an existing playlist on the Emby server.
@@ -831,7 +837,7 @@ def remove_items_from_playlist(playlist_id: str, playlist_item_numbers: str) -> 
 
 #--------------------------------------------------
 
-@mcp.tool()
+@write_tool
 def reorder_items_on_playlist(playlist_id: str, playlist_item_number: str, playlist_item_index: str) -> str:
     """
     Moves one items to a new position on an existing playlist on the Emby server.
@@ -863,7 +869,7 @@ def reorder_items_on_playlist(playlist_id: str, playlist_item_number: str, playl
 
 #--------------------------------------------------
 
-@mcp.tool()
+@write_tool
 def share_playlist_public(playlist_id: str) -> str:
     """
     Shares an existing playlist with all other users of the Emby server as Read access.
@@ -889,7 +895,7 @@ def share_playlist_public(playlist_id: str) -> str:
 
 #--------------------------------------------------
 
-@mcp.tool()
+@write_tool
 def share_playlist_user_access(playlist_id: str, user_ids: str, access_level:str) -> str:
     """
     Shares an existing playlist with specific users of the Emby server and specifi access rights.
@@ -924,7 +930,7 @@ def share_playlist_user_access(playlist_id: str, user_ids: str, access_level:str
 
 #--------------------------------------------------
 
-@mcp.tool()
+@write_tool
 def stop_sharing_playlist(playlist_id: str) -> str:
     """
     Stop the public sharing of an existing playlist with other users of the Emby server.
@@ -1046,7 +1052,7 @@ def retrieve_player_queue(session_id: str) -> str:
 
 #--------------------------------------------------
 
-@mcp.tool()
+@write_tool
 def control_media_player(session_id: str, command: str, item_ids: Optional[str] = None, time_milliseconds: Optional[int] = None) -> str:
     """
     Control the media player identified as 'session_id' by sending it a 'command'. 

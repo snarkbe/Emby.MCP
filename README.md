@@ -72,6 +72,9 @@ EMBY_USERNAME = "user"
 EMBY_PASSWORD = "pass"
 # Set to False to NOT verify the server's SSL certificate (eg if self-signed). Defaults to True.
 EMBY_VERIFY_SSL = True
+# Set to True to enable read-only mode: only query tools are published to the LLM.
+# Playlist creation/modification, sharing, and player control tools are disabled. Defaults to False.
+EMBY_READONLY = False
 # Each LLM has an upper limit on the amount of data it can ingest per tool call.
 # Set the max number of items returned per chunk by search tools (or 0 for no limit).
 # Items with rich metadata can average around 1,800 bytes each in JSON UTF8 format.

@@ -19,7 +19,7 @@ MCP server that connects an Emby media server to any MCP-compatible AI client (C
 - Python 3.13+
 - [uv](https://docs.astral.sh/uv/) package manager
 - [MCP Server SDK for Python](https://github.com/modelcontextprotocol/python-sdk/) v1.9.4+
-- [Emby client SDK](https://pypi.org/project/embyclient/) v4.9.0.33 (+ hotfix patches, see below)
+- [Emby client SDK](https://pypi.org/project/embyclient/) v4.9.0.33 (+ a hotfix patch, see below)
 - A running [Emby Media Server](https://emby.media/about.html)
 - An MCP-compatible AI client that supports **Tools**
 
@@ -31,12 +31,12 @@ git clone https://github.com/snarkbe/Emby.MCP.git
 cd Emby.MCP
 uv sync --link-mode=copy
 
-# 2. Apply hotfix patches to the Emby SDK (repeat after every uv sync)
+# 2. Apply the Emby SDK hotfix (repeat after every uv sync)
+# The shipped SDK is missing the ItemId parameter on /Users/ItemAccess,
+# which is required by the playlist sharing query.
 # Windows:
-copy "hotfixes\emby\configuration.py"    ".venv\Lib\site-packages\emby_client"
 copy "hotfixes\emby\user_service_api.py" ".venv\Lib\site-packages\emby_client\api"
 # Linux/macOS:
-cp hotfixes/emby/configuration.py    .venv/lib/python*/site-packages/emby_client/
 cp hotfixes/emby/user_service_api.py .venv/lib/python*/site-packages/emby_client/api/
 ```
 
@@ -47,7 +47,7 @@ Create a `.env` file in the project directory:
 ```env
 EMBY_SERVER_URL = "http://localhost:8096"
 EMBY_USERNAME   = "user"
-EMBY_PASSWORD   = "pass"
+EMBY_API_KEY    = "your-api-key"   # Emby admin -> Advanced -> API Keys -> New API Key
 
 # Optional
 EMBY_VERIFY_SSL = True   # Set False to skip SSL cert verification (e.g. self-signed). Default: True
@@ -55,7 +55,7 @@ EMBY_READONLY   = False  # Set True to expose only read/query tools — disables
 LLM_MAX_ITEMS   = 100    # Max items per search chunk (0 = no limit). Default: 100
 ```
 
-> Tip: create a dedicated Emby user for Emby.MCP to limit its access.
+> Tip: create a dedicated Emby user for Emby.MCP to limit its access. The username is still required to resolve which user_id the tools act as.
 
 ### Verify the setup
 

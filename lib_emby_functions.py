@@ -93,7 +93,7 @@ def authenticate_with_emby(server_url: str, username: str, password: str, client
         session_info = auth_result.session_info
                         
         # Update the API client configuration with the access token for future requests
-        e_api_client.configuration.api_key['access_token'] = access_token
+        e_api_client.configuration.api_key['api_key'] = access_token
         
         return {
             'success': True,
@@ -129,7 +129,7 @@ def create_authenticated_client(server_url: str, access_token: str) ->object:
     config.host = server_url
     
     e_api_client = emby_client.ApiClient(configuration=config)
-    e_api_client.configuration.api_key['access_token'] = access_token
+    e_api_client.configuration.api_key['api_key'] = access_token
 
     return e_api_client
 

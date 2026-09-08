@@ -61,7 +61,7 @@ LLM_MAX_ITEMS   = 100    # Max items per search chunk (0 = no limit). Default: 1
 
 ```bash
 uv run emby_mcp_server.py
-# Should log in, list libraries, and log out cleanly. Press Ctrl-C to exit.
+# Should log in and list libraries, then start the MCP server on stdio. Press Ctrl-C to exit.
 ```
 
 ## Client Setup

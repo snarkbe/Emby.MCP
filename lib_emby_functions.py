@@ -297,6 +297,7 @@ def set_current_library(available_libraries:list, name:str = "") ->dict:
     if name != "":
         if available_libraries != None and len(available_libraries) > 0:
             found = False
+            current_library = None
             for library in available_libraries:
                 if library['name'].lower() == name.lower():
                     current_library = library
@@ -432,23 +433,24 @@ def get_items(e_api_client: object, user_id: str, library_id: str = "", **kwargs
     filters = ""
     lyrics_search = ""
     for key in kwargs:
+        value = kwargs.get(key)
         match key:
             case "artist":
-                if kwargs[key] is not None and kwargs[key] != "":
-                    kwcooked["artists"] = kwargs[key]
+                if value is not None and value != "":
+                    kwcooked["artists"] = value
             case "genre":
-                if kwargs[key] is not None and kwargs[key] != "":
-                    kwcooked["genres"] = kwargs[key]
+                if value is not None and value != "":
+                    kwcooked["genres"] = value
             case "lyrics":
                 # Emby does not support lyrics search, so we do this ourselves
-                if kwargs[key] is not None and kwargs[key] != "":
-                    lyrics_search = kwargs[key]
+                if value is not None and value != "":
+                    lyrics_search = value
             case "first_date":
-                if kwargs[key] is not None and kwargs[key] != "":
-                    kwcooked["MinStartDate"] = kwargs[key]
+                if value is not None and value != "":
+                    kwcooked["min_start_date"] = value
             case "last_date":
-                if kwargs[key] is not None and kwargs[key] != "":
-                    kwcooked["MaxEndDate"] = kwargs[key]
+                if value is not None and value != "":
+                    kwcooked["max_end_date"] = value
             case "is_unplayed":
                 if filters != "":
                     filters = f"{filters},"
@@ -456,14 +458,14 @@ def get_items(e_api_client: object, user_id: str, library_id: str = "", **kwargs
             case "is_played":
                 if filters != "":
                     filters = f"{filters},"
-                filters = f"{filters}IsPlayed"        
+                filters = f"{filters}IsPlayed"
             case "is_favorite":
                 if filters != "":
                     filters = f"{filters},"
                 filters = f"{filters}IsFavorite"
             case _:
-                if kwargs[key] is not None and kwargs[key] != "":
-                    kwcooked[key] = kwargs[key]
+                if value is not None and value != "":
+                    kwcooked[key] = value
     if filters != "":
         kwcooked["filters"] = filters
     
@@ -519,9 +521,12 @@ def get_items(e_api_client: object, user_id: str, library_id: str = "", **kwargs
                 if item['media_sources']:
                     media_streams = item['media_sources'][0].get('media_streams', [])
                     if media_streams and 'extradata' in media_streams[0]:
-                        # update the item 'lyrics' string and remove the now redundant 'media_sources' key
-                        item['lyrics'] = media_streams[0]['extradata'] 
-                        item.pop('media_sources', None)
+                        # update the item 'lyrics' string with the found lyrics subtitle
+                        item['lyrics'] = media_streams[0]['extradata']
+                # 'media_sources' is only an intermediate scratch field used to locate the lyrics
+                # subtitle above; always drop it so it never leaks into the tool's JSON output,
+                # whether or not a lyrics stream was actually found.
+                item.pop('media_sources', None)
                 if item['run_time_ticks'] > 0:
                     total_seconds = int(item['run_time_ticks'] / 10000000) # convert from ticks
                     tthours = total_seconds // 3600
@@ -660,8 +665,10 @@ def get_playlists(e_api_client: object, user_id: str, available_libraries:list, 
                                     if a_user['user_id'] == user_id:
                                         if a_user['access_level'] in ['Manage', 'ManageDelete']:
                                             can_share = True
-                        except ApiException as e:
-                            # ignore errors while getting user access levels - often they are because we do not own the playlist.
+                        except (ApiException, TypeError) as e:
+                            # ignore errors while getting user access levels - often they are because we do not own
+                            # the playlist, or (TypeError) the installed embyclient SDK is missing the ItemId
+                            # hotfix (see hotfixes/emby/user_service_api.py).
                             do_nothing=True
 
                         item['user_access'] = filtered_access
@@ -771,7 +778,7 @@ def get_playlist_items(e_api_client: object, user_id: str, playlist_id: str) ->d
                     'playlist_item_index': "" # Placeholder for playlist item index, will be filled later
                 }
                 for item in items_list
-                if item.media_type.lower() == 'audio' or item.media_type.lower() == 'video'
+                if item.media_type is not None and item.media_type.lower() in ('audio', 'video')
             ]
             
             # Extract the lyrics string from the 'media sources' object, if available
@@ -780,9 +787,12 @@ def get_playlist_items(e_api_client: object, user_id: str, playlist_id: str) ->d
                 if item['media_sources']:
                     media_streams = item['media_sources'][0].get('media_streams', [])
                     if media_streams and 'extradata' in media_streams[0]:
-                        # update the item 'lyrics' string and remove the now redundant 'media_sources' key
-                        item['lyrics'] = media_streams[0]['extradata'] 
-                        item.pop('media_sources', None)
+                        # update the item 'lyrics' string with the found lyrics subtitle
+                        item['lyrics'] = media_streams[0]['extradata']
+                # 'media_sources' is only an intermediate scratch field used to locate the lyrics
+                # subtitle above; always drop it so it never leaks into the tool's JSON output,
+                # whether or not a lyrics stream was actually found.
+                item.pop('media_sources', None)
                 if item['run_time_ticks'] > 0:
                     total_seconds = int(item['run_time_ticks'] / 10000000) # convert from ticks
                     tthours = total_seconds // 3600
@@ -1144,13 +1154,14 @@ def set_playlist_sharing(e_api_client: object, playlist_id: str, share_type: str
             user_ids = ''
             item_access = ''
             for key in kwargs:
+                value = kwargs.get(key)
                 match key:
                     case "user_ids":
-                        if kwargs[key] is not None and kwargs[key] != "":
-                            user_ids = kwargs[key]
+                        if value is not None and value != "":
+                            user_ids = value
                     case "item_access":
-                        if kwargs[key] is not None and kwargs[key] != "":
-                            item_access = kwargs[key]
+                        if value is not None and value != "":
+                            item_access = value
             if user_ids == '' or item_access == '':
                 return {
                     'success': False,
@@ -1158,10 +1169,11 @@ def set_playlist_sharing(e_api_client: object, playlist_id: str, share_type: str
                 }
 
             # Generate body and call API
-            body = emby_client.UserLibraryUpdateUserItemAccess
-            body.item_ids = [playlist_id]
-            body.user_ids = user_ids
-            body.item_access = item_access
+            body = emby_client.UserLibraryUpdateUserItemAccess(
+                item_ids=[playlist_id],
+                user_ids=user_ids,
+                item_access=item_access
+            )
             api_response = api_instance.post_items_access(body)
             return {
                 'success': True
@@ -1208,13 +1220,14 @@ def get_users(e_api_client: object, **kwargs: Unpack[getusers_kwargs]) ->dict:
     user_list = []
     return_list = []
     for key in kwargs:
+        value = kwargs.get(key)
         match key:
             case "user_id":
-                if kwargs[key] is not None and kwargs[key] != "":
-                    user_id = kwargs[key]
+                if value is not None and value != "":
+                    user_id = value
             case "user_name":
-                if kwargs[key] is not None and kwargs[key] != "":
-                    user_name = kwargs[key]
+                if value is not None and value != "":
+                    user_name = value
 
     # Run query and process results
     api_instance = emby_client.UserServiceApi(e_api_client)
@@ -1354,7 +1367,7 @@ def get_player_sessions(e_api_client:object, user_id: Optional[str] = "", media_
         # Also update the 'device_local_to_emby' field to True if the device IP is localhost relative to the Emby server
         session_list = []
         for item in filtered_items:
-            if media_type != '':
+            if media_type is not None and media_type != '':
                 for mt in item['media_types']:
                     if mt.lower() == media_type.lower():
                         if item['device_ip_address'] is not None and (item['device_ip_address'] == '::1' or item['device_ip_address'] == '127.0.0.1'):
@@ -1553,9 +1566,10 @@ def send_player_command(e_api_client: object, session_id: str, command: str, **k
     if command == 'PlayNow':
         # Initiating playback is done via the Emby 'post_sessions_by_id_playing' method and requires an item_id.
 
-        if kwargs.get('item_ids') is not None and kwargs.get('item_ids') != '':
-            body = emby_client.PlayRequest() # PlayRequest | PlayRequest: 
-            item_ids = [kwargs['item_ids']] # list[str] | The ids of the items to play, comma delimited
+        play_item_ids = kwargs.get('item_ids')
+        if play_item_ids is not None and play_item_ids != '':
+            body = emby_client.PlayRequest() # PlayRequest | PlayRequest:
+            item_ids = [play_item_ids] # list[str] | The ids of the items to play, comma delimited
             play_command = command # str | The type of play command to issue (PlayNow, PlayNext, PlayLast).
             id = session_id # str | Session Id
             try:
@@ -1579,13 +1593,13 @@ def send_player_command(e_api_client: object, session_id: str, command: str, **k
     elif command in ['Stop', 'Pause', 'Unpause', 'NextTrack', 'PreviousTrack', 'Seek', 'Rewind', 'FastForward', 'PlayPause', 'SeekRelative']:
         # For all other valid commands, the Emby 'post_sessions_by_id_playing_by_command' method is used.
 
-        if kwargs.get('user_id') is not None and kwargs.get('user_id') != "":
+        play_user_id = kwargs.get('user_id')
+        if play_user_id is not None and play_user_id != "":
 
             # Apply default times and convert milliseconds into PositionTicks
-            if kwargs.get('time_ms') is None: 
+            time_ms = kwargs.get('time_ms')
+            if time_ms is None:
                 time_ms = 0
-            else:
-                time_ms = kwargs.get('time_ms')
             if time_ms == 0 and command in ['Rewind', 'FastForward', 'SeekRelative']:
                 time_ms = 30000 # 30 seconds
             time_ticks = time_ms * 10000
@@ -1596,9 +1610,9 @@ def send_player_command(e_api_client: object, session_id: str, command: str, **k
                 time_ticks = -time_ticks
             elif command.lower() == "fastforward":
                 command = "SeekRelative"
-        
+
             try:
-                body = emby_client.PlaystateRequest(command, time_ticks, kwargs['user_id'])
+                body = emby_client.PlaystateRequest(command, time_ticks, play_user_id)
                 api_response = api_instance.post_sessions_by_id_playing_by_command(body, session_id, command)
                 return {
                     'success': True,

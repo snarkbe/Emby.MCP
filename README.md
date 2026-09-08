@@ -18,7 +18,7 @@ MCP server that connects an Emby media server to any MCP-compatible AI client (C
 
 - Python 3.13+
 - [uv](https://docs.astral.sh/uv/) package manager
-- [MCP Server SDK for Python](https://github.com/modelcontextprotocol/python-sdk/) v1.9.4+
+- [MCP Server SDK for Python](https://github.com/modelcontextprotocol/python-sdk/) v2.0+
 - [Emby client SDK](https://pypi.org/project/embyclient/) v4.9.0.33 (+ a hotfix patch, see below)
 - A running [Emby Media Server](https://emby.media/about.html)
 - An MCP-compatible AI client that supports **Tools**
@@ -82,6 +82,42 @@ Edit `%USERPROFILE%\AppData\Roaming\Claude\claude_desktop_config.json` (Windows)
 ```
 
 Restart Claude Desktop. On first use, approve each tool when prompted (select **Allow always**).
+
+### Docker
+
+Build the image:
+
+```bash
+docker build -t emby-mcp .
+```
+
+Configuration is supplied entirely via environment variables — **no `.env` file is
+copied into the image**. Pass `EMBY_SERVER_URL`, `EMBY_USERNAME`, `EMBY_API_KEY` (required)
+and optionally `EMBY_VERIFY_SSL`, `EMBY_READONLY`, `LLM_MAX_ITEMS` with `-e` or `--env-file`:
+
+```bash
+docker run --rm -i \
+  -e EMBY_SERVER_URL=http://your-emby-host:8096 \
+  -e EMBY_USERNAME=user \
+  -e EMBY_API_KEY=your-api-key \
+  emby-mcp
+```
+
+The server communicates over stdio, so an MCP client spawns `docker run -i ...` as its
+command. For Claude Desktop / VS Code Copilot, use an `--env-file` to keep secrets out of
+the client config (create a local `docker.env` file, listed in `.gitignore`, with the
+same `KEY=value` lines as `.env`):
+
+```json
+{
+  "mcpServers": {
+    "Emby": {
+      "command": "docker",
+      "args": ["run", "--rm", "-i", "--env-file", "/path/to/docker.env", "emby-mcp"]
+    }
+  }
+}
+```
 
 ### VS Code Copilot
 

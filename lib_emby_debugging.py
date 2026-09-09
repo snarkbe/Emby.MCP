@@ -34,19 +34,19 @@ import emby_client
 from emby_client.rest import ApiException
 from lib_emby_functions import *
 
-def test_emby_functions(MY_NAME, MY_VERSION, MY_PLATFORM, MY_HOSTNAME) ->None:
+def test_emby_functions(APP_NAME, APP_VERSION, PLATFORM_NAME, HOSTNAME_NAME) ->None:
     """
     Executes the Emby functions sequentially for development and basic testing / debugging.
-    Set 'MY_DEBUG=True' at top of emby_mcp_server.py , then interactively run *that* script.
+    Set 'DEBUG=True' at top of emby_mcp_server.py , then interactively run *that* script.
     The script's standard output can be redirected to a file to capture full data that the 
     interactive terminal may otherwise truncate - prompts & errors are sent to standard error.
     Enable different test blocks below by setting 'if True:' instead of 'if False:' at their start    
     
     Args:
-        MY_NAME (str): The project name, used to construct the client info for Emby login
-        MY_VERSION (str): The project version, used to construct the client info for Emby login
-        MY_PLATFORM (str): The platform (eg 'Windows'), used to construct the device info for Emby login
-        MY_HOSTNAME (str): This computer's name, used to construct the device info for Emby login
+        APP_NAME (str): The project name, used to construct the client info for Emby login
+        APP_VERSION (str): The project version, used to construct the client info for Emby login
+        PLATFORM_NAME (str): The platform (eg 'Windows'), used to construct the device info for Emby login
+        HOSTNAME_NAME (str): This computer's name, used to construct the device info for Emby login
         
     Returns:
         None
@@ -69,8 +69,8 @@ def test_emby_functions(MY_NAME, MY_VERSION, MY_PLATFORM, MY_HOSTNAME) ->None:
     default_session_command = 'PlayNow'
     default_seek_milliseconds = 180000 # Integer - do not enclose in quotes!
 
-    global MY_USER_ID
-    MY_LICENSE = """Emby.MCP Copyright (C) 2025 Dominic Search <code@angeltek.co.uk>
+    global EMBY_USER_ID
+    LICENSE_NOTICE = """Emby.MCP Copyright (C) 2025 Dominic Search <code@angeltek.co.uk>
 This program comes with ABSOLUTELY NO WARRANTY. This is free software, and you are 
 welcome to redistribute it under certain conditions; see LICENSE.txt for details."""
    
@@ -90,13 +90,13 @@ welcome to redistribute it under certain conditions; see LICENSE.txt for details
         sys.exit(1)
     
     # Login to Emby server
-    device_name = MY_HOSTNAME + " (" + MY_PLATFORM + ")"  # shown in Emby server logs & devices page
-    client_name = f"{MY_NAME}"  # shown in Emby server logs & devices page
-    result = authenticate_with_emby(server_url, username, password, client_name, MY_VERSION, device_name)
+    device_name = HOSTNAME_NAME + " (" + PLATFORM_NAME + ")"  # shown in Emby server logs & devices page
+    client_name = f"{APP_NAME}"  # shown in Emby server logs & devices page
+    result = authenticate_with_emby(server_url, username, password, client_name, APP_VERSION, device_name)
     if result['success']:
         e_api_client = result['api_client']
-        MY_USER_ID = result['user_id'] # we need this for various other Emby function calls
-        print(f"Logon to media server was successful. \n\n{MY_LICENSE}\n", file=sys.stderr)
+        EMBY_USER_ID = result['user_id'] # we need this for various other Emby function calls
+        print(f"Logon to media server was successful. \n\n{LICENSE_NOTICE}\n", file=sys.stderr)
         # Use the authenticated client for further API calls
     else:
         print(f"Fatal ERROR: login to media server failed: {result['error']}", file=sys.stderr)
@@ -193,7 +193,7 @@ welcome to redistribute it under certain conditions; see LICENSE.txt for details
                                 if user_input_years != '':
                                     kwargs['years'] = user_input_years
 
-                                item_list = get_items(e_api_client, MY_USER_ID ,library_id=CURRENT_LIBRARY['id'], **kwargs)
+                                item_list = get_items(e_api_client, EMBY_USER_ID ,library_id=CURRENT_LIBRARY['id'], **kwargs)
                                 if item_list['success']:
                                     print(f"Retrieved {len(item_list['items'])} items from library '{CURRENT_LIBRARY['name']}'", file=sys.stderr)
                                     print(json.dumps(item_list['items'], indent=4))
@@ -222,7 +222,7 @@ welcome to redistribute it under certain conditions; see LICENSE.txt for details
 
     # This section must be run if you are going to test any other playlist functions
     if False:
-        playlist_list =  get_playlists(e_api_client, MY_USER_ID, AVAILABLE_LIBRARIES, '')
+        playlist_list =  get_playlists(e_api_client, EMBY_USER_ID, AVAILABLE_LIBRARIES, '')
         if playlist_list['success']:
             AVAILABLE_PLAYLISTS = playlist_list['playlists'] # We need this for other Playlist related functions
             print(f"Found {len(AVAILABLE_PLAYLISTS)} playlists", file=sys.stderr)
@@ -243,7 +243,7 @@ welcome to redistribute it under certain conditions; see LICENSE.txt for details
                 loop_playlist = False
             if loop_playlist:
                 print(f"Selecting playlist_id: {user_input}", file=sys.stderr)
-                playlist_result = get_playlist_items(e_api_client, MY_USER_ID, user_input)
+                playlist_result = get_playlist_items(e_api_client, EMBY_USER_ID, user_input)
                 if playlist_result['success']:
                     playlist_items = playlist_result['items']
                     print(f"Playlist contains ({playlist_result['total_count']} items)", file=sys.stderr)
@@ -267,7 +267,7 @@ welcome to redistribute it under certain conditions; see LICENSE.txt for details
                 user_input_overview = input('')
                 if user_input_overview != '':
                     kwargs['overview'] = user_input_overview
-                playlist_result = new_playlist(e_api_client, MY_USER_ID, AVAILABLE_LIBRARIES, user_input_name, **kwargs)
+                playlist_result = new_playlist(e_api_client, EMBY_USER_ID, AVAILABLE_LIBRARIES, user_input_name, **kwargs)
                 if playlist_result['success']:
                     print(f"Playlist successfully created with playlist_id ({playlist_result['playlist_id']}", file=sys.stderr)
                 else:
@@ -291,7 +291,7 @@ welcome to redistribute it under certain conditions; see LICENSE.txt for details
                 elif user_input_items == '.':
                     loop_playlist = False
                 if loop_playlist:
-                    result = add_playlist_items(e_api_client, MY_USER_ID, user_input_id, user_input_items)
+                    result = add_playlist_items(e_api_client, EMBY_USER_ID, user_input_id, user_input_items)
                     if result['success']:
                         print(f"Added items to playlist: {result['item_count']}", file=sys.stderr)
                     else:
@@ -413,7 +413,7 @@ welcome to redistribute it under certain conditions; see LICENSE.txt for details
                 if user_input_overview != '':
                     kwargs['overview'] = user_input_overview
 
-                result = set_playlist_meta(e_api_client, MY_USER_ID, AVAILABLE_LIBRARIES, user_input_id, **kwargs)
+                result = set_playlist_meta(e_api_client, EMBY_USER_ID, AVAILABLE_LIBRARIES, user_input_id, **kwargs)
                 if result['success']:
                     print(f"Changed playlist details", file=sys.stderr)
                 else:
@@ -433,9 +433,9 @@ welcome to redistribute it under certain conditions; see LICENSE.txt for details
                 loop_player = False
             if loop_player:
                 if user_input_type != '':
-                    sessions_list = get_player_sessions(e_api_client, MY_USER_ID, user_input_type)
+                    sessions_list = get_player_sessions(e_api_client, EMBY_USER_ID, user_input_type)
                 else:
-                    sessions_list = get_player_sessions(e_api_client, MY_USER_ID)
+                    sessions_list = get_player_sessions(e_api_client, EMBY_USER_ID)
                 if sessions_list['success']:
                     print(f"Found {len(sessions_list['sessions'])} player sessions", file=sys.stderr)
                     print(json.dumps(sessions_list['sessions'], indent=2))
@@ -500,7 +500,7 @@ welcome to redistribute it under certain conditions; see LICENSE.txt for details
                             loop_player = False
 
                     if loop_player:
-                        kwargs['user_id'] = MY_USER_ID
+                        kwargs['user_id'] = EMBY_USER_ID
                         if user_input_item_ids != '':
                             kwargs['item_ids'] = user_input_item_ids
                         if user_input_seek_ms != '':

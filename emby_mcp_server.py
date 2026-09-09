@@ -9,24 +9,14 @@ an interface for AI applications such as Claude Desktop to query and control a m
 See README.md for details on features, installation and usage.
 
 Copyright (C) 2025 Dominic Search <code@angeltek.co.uk>
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, version 3 of the License.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
+Modified 2026 by Gilles Reichert <gilles@reichertonline.be>.
+Licensed under the GNU General Public License v3 (or later). No warranty; see LICENSE.txt.
 """
 
 #==================================================
 # Debugging - Set this True to enable debug features  
 #==================================================
-MY_DEBUG = False
+DEBUG = False
 
 #==================================================
 # Prelimanary & Initialisation
@@ -45,32 +35,42 @@ import sys
 import uuid
 from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
-from mcp.server.fastmcp import FastMCP, Context
+from mcp.server.mcpserver import MCPServer, Context
 from lib_emby_functions import *
 
 def str_to_bool(s: str) -> bool:
     return str(s).strip().lower() in ("true", "1", "yes", "y", "on")
 
+def get_max_chunk_size(default: int = 100) -> int:
+    """Reads LLM_MAX_ITEMS from the environment, falling back to `default` if it is
+    unset, blank, or not a valid integer (README documents it as optional)."""
+    raw = os.getenv("LLM_MAX_ITEMS")
+    if raw is None or str(raw).strip() == "":
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        print(f"WARNING: LLM_MAX_ITEMS='{raw}' is not a valid integer, using default {default}", file=sys.stderr)
+        return default
+
 # Some statements about the script
-MY_NAME = "Emby.MCP"
-MY_VERSION = "1.0.2"
-MY_READONLY = str_to_bool(os.getenv("EMBY_READONLY", "False"))
-MY_PURPOSE = (
+APP_NAME = "Emby.MCP"
+APP_VERSION = "1.1.0"
+READONLY_MODE = str_to_bool(os.getenv("EMBY_READONLY", "False"))
+APP_PURPOSE = (
     "These MCP tools allow you to query an Emby media server in read-only mode. Using them you can retrieve"
     " a list of libraries, genres, playlists, audio & video items, and player sessions."
     " Playlist and player control tools are disabled in read-only mode."
-    if MY_READONLY else
+    if READONLY_MODE else
     "These MCP tools allow you to control an Emby media server. Using them you can retrieve"
     " a list of libraries, genres, playlists, audio & video items, and player sessions."
     " You can add items to playlists and play, pause and stop items on a player session."
 )
-MY_LICENSE = """Emby.MCP Copyright (C) 2025 Dominic Search <code@angeltek.co.uk>
-This program comes with ABSOLUTELY NO WARRANTY. This is free software, and you are 
-welcome to redistribute it under certain conditions; see LICENSE.txt for details."""
+LICENSE_NOTICE = "Emby.MCP Copyright (C) 2025 Dominic Search <code@angeltek.co.uk>, modified 2026 by Gilles Reichert — GPLv3, no warranty; see LICENSE.txt."
 
 # About the environment
-MY_PLATFORM = get_platform_system()  # Get the platform system name (e.g., 'Linux', 'Windows', 'Darwin')
-MY_HOSTNAME = get_platform_hostname()  # Get the platform hostname (e.g., 'my-computer.local')
+PLATFORM_NAME = get_platform_system()  # Get the platform system name (e.g., 'Linux', 'Windows', 'Darwin')
+HOSTNAME_NAME = get_platform_hostname()  # Get the platform hostname (e.g., 'my-computer.local')
 
 # Set UTF-8 encoding. Line buffering ensures immediate input/output on receiving LF or CR.
 sys.stdin = io.TextIOWrapper(sys.stdin.buffer, line_buffering=True, encoding='utf-8')
@@ -92,7 +92,7 @@ mcp_context['search_item_chunking'] = {}
 #-------------------------
 
 @asynccontextmanager
-async def app_lifespan(server: FastMCP) ->AsyncIterator[dict]:
+async def app_lifespan(server: MCPServer) ->AsyncIterator[dict]:
     """
     Manage application lifecycle with type-safe context
 
@@ -120,34 +120,34 @@ async def app_lifespan(server: FastMCP) ->AsyncIterator[dict]:
             items (list of dict): all of the actual search items
     """
    
-    # Load Emby login environment variables from .env file
+    # Load Emby login environment variables. A .env file is optional: when present (eg for
+    # local development) its values are loaded, but real process environment variables
+    # (eg set with `docker run -e ...`) work equally well and are required in production,
+    # where no .env file should ever be shipped or mounted.
     env_file = find_dotenv('.env', usecwd=True)
     if env_file:
         load_dotenv(env_file, override=True)
-        server_url = os.getenv("EMBY_SERVER_URL")
-        username = os.getenv("EMBY_USERNAME")
-        api_key = os.getenv("EMBY_API_KEY")
-        verify_ssl = str_to_bool(os.getenv("EMBY_VERIFY_SSL", "True"))
-        max_chunk_size = os.getenv("LLM_MAX_ITEMS")
-        if server_url == None or username == None or api_key == None:
-            print("Fatal error, missing required variables. Ensure the .env file contains EMBY_SERVER_URL, EMBY_USERNAME, EMBY_API_KEY", file=sys.stderr)
-            sys.exit(1)
-    else:
-        print("Fatal error, cannot find the .env file. Ensure that it exists in the same directory as script.", file=sys.stderr)
+    server_url = os.getenv("EMBY_SERVER_URL")
+    username = os.getenv("EMBY_USERNAME")
+    api_key = os.getenv("EMBY_API_KEY")
+    verify_ssl = str_to_bool(os.getenv("EMBY_VERIFY_SSL", "True"))
+    max_chunk_size = get_max_chunk_size()
+    if server_url == None or username == None or api_key == None:
+        print("Fatal error, missing required variables. Ensure EMBY_SERVER_URL, EMBY_USERNAME, EMBY_API_KEY are set (via a .env file or the process environment)", file=sys.stderr)
         sys.exit(1)
 
     # Login to Emby server
-    device_name = MY_HOSTNAME + " (" + MY_PLATFORM + ")"  # shown in Emby server logs & devices page
-    client_name = f"{MY_NAME} for AI"  # shown in Emby server logs & devices page
-    auth_context = authenticate_with_emby_apikey(server_url, api_key, username, client_name, MY_VERSION, device_name, verify_ssl)
+    device_name = HOSTNAME_NAME + " (" + PLATFORM_NAME + ")"  # shown in Emby server logs & devices page
+    client_name = f"{APP_NAME} for AI"  # shown in Emby server logs & devices page
+    auth_context = authenticate_with_emby_apikey(server_url, api_key, username, client_name, APP_VERSION, device_name, verify_ssl)
     if auth_context['success']:
         # Store other default context data; the API client is already in auth_context.
         auth_context['available_libraries'] = []
         auth_context['current_library'] = {}
         auth_context['max_chunk_size'] = max_chunk_size
         auth_context['search_item_chunking'] = {}
-        print(f"Logon to media server was successful. \n\n{MY_LICENSE}", file=sys.stderr)
-        if MY_READONLY:
+        print(f"Logon to media server was successful. \n\n{LICENSE_NOTICE}", file=sys.stderr)
+        if READONLY_MODE:
             print("Read-only mode is enabled. Playlist and player control tools are not available.", file=sys.stderr)
     else:
         print(f"Fatal ERROR: login to media server failed: {auth_context['error']}", file=sys.stderr)
@@ -164,11 +164,11 @@ async def app_lifespan(server: FastMCP) ->AsyncIterator[dict]:
         pass
 
 # Create the MCP server with lifespan handler
-mcp = FastMCP(name=MY_NAME, instructions=MY_PURPOSE, lifespan=app_lifespan)
+mcp = MCPServer(name=APP_NAME, instructions=APP_PURPOSE, lifespan=app_lifespan)
 
 def write_tool(func):
     """Only registers the function as an MCP tool when not in read-only mode."""
-    if not MY_READONLY:
+    if not READONLY_MODE:
         return mcp.tool()(func)
     return func
 
@@ -177,7 +177,7 @@ def write_tool(func):
 #-------------------------
 
 @mcp.tool()
-def retrieve_user_list() -> str:
+def retrieve_user_list(ctx: Context) -> str:
     """
     Retrieves a list of user names and their user IDs from the Emby server in JSON format.
 
@@ -190,7 +190,6 @@ def retrieve_user_list() -> str:
         user_name (str): user name
     """
 
-    ctx = mcp.get_context()
     auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
     e_api_client = auth_context['api_client']
 
@@ -207,7 +206,7 @@ def retrieve_user_list() -> str:
 #-------------------------
 
 @mcp.tool()
-def retrieve_library_list() -> str:
+def retrieve_library_list(ctx: Context) -> str:
     """
     Retrieve a list of libraries from the Emby media server in JSON format.
 
@@ -221,7 +220,6 @@ def retrieve_library_list() -> str:
         type (str): library media type   
     """
 
-    ctx = mcp.get_context()
     auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
     e_api_client = auth_context['api_client']
 
@@ -239,7 +237,7 @@ def retrieve_library_list() -> str:
 #--------------------------------------------------
 
 @mcp.tool()
-def select_library(library_name: str = "") -> str:
+def select_library(ctx: Context, library_name: str = "") -> str:
     """
     Select a library on the Emby media server by supplying the library's name.
 
@@ -250,14 +248,13 @@ def select_library(library_name: str = "") -> str:
         Str: "Success" or an error message
     """
 
-    if library_name is not None or library_name != "":
-        ctx = mcp.get_context()
+    if library_name is not None and library_name != "":
         auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
         available_libraries = auth_context['available_libraries']
 
         if available_libraries is None or len(available_libraries) == 0:
             # No saved library data, so retrieve the list from the server
-            result = retrieve_library_list() # returns json, not useful here
+            result = retrieve_library_list(ctx) # returns json, not useful here
             available_libraries = auth_context['available_libraries'] # however this has been updated
 
         if available_libraries is not None and len(available_libraries) > 0:
@@ -276,7 +273,7 @@ def select_library(library_name: str = "") -> str:
 #--------------------------------------------------
 
 @mcp.tool()
-def retrieve_current_library() -> str:
+def retrieve_current_library(ctx: Context) -> str:
     """
     Retrieve the name of the currently selected library on the Emby media server in JSON format.
 
@@ -289,7 +286,6 @@ def retrieve_current_library() -> str:
         id (str): library unique identifier
         type (str): library media type
     """
-    ctx = mcp.get_context()
     auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
     current_library = auth_context['current_library']    
 
@@ -303,7 +299,7 @@ def retrieve_current_library() -> str:
 #-------------------------
 
 @mcp.tool()
-def retrieve_genre_list() -> str:
+def retrieve_genre_list(ctx: Context) -> str:
     """
     Retrieve a list of item genres available in the current library on the Emby media server in JSON format.
 
@@ -314,7 +310,6 @@ def retrieve_genre_list() -> str:
         List of str: as JSON
     """
 
-    ctx = mcp.get_context()
     auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
     current_library = auth_context['current_library']
 
@@ -335,7 +330,8 @@ def retrieve_genre_list() -> str:
 #-------------------------
 
 @mcp.tool()
-def search_for_item(title_or_album: Optional[str] = "", 
+def search_for_item(ctx: Context,
+                    title_or_album: Optional[str] = "",
                     artist_name: Optional[str] = "", 
                     genre_name: Optional[str] = "", 
                     broadcast_release_years: Optional[str] = "",
@@ -383,7 +379,6 @@ def search_for_item(title_or_album: Optional[str] = "",
             file_path (str): the file path of the item within the Emby server.
     """
 
-    ctx = mcp.get_context()
     auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
     current_library = auth_context['current_library']
 
@@ -422,7 +417,7 @@ def search_for_item(title_or_album: Optional[str] = "",
                 search_results['more_chunks_available'] = True # False means this is the last chunk
                 auth_context['search_item_chunking'] = search_results
                 # retrieve and return the first chunk
-                search_results = retrieve_next_search_chunk() 
+                search_results = retrieve_next_search_chunk(ctx)
             else:
                 # acceptable number of items, so mark as last chunk 
                 search_results['chunk_number'] = 1
@@ -441,7 +436,7 @@ def search_for_item(title_or_album: Optional[str] = "",
 #--------------------------------------------------
 
 @mcp.tool()
-def retrieve_next_search_chunk() -> str:
+def retrieve_next_search_chunk(ctx: Context) -> str:
     """
     Retrieve the next chunk of search results that were found by tool search_for_item. Use retrieve_next_search_chunk when you are
     ready to process more media items, and repeat until 'more_chunks_available' is no longer true or no data is returned.
@@ -479,7 +474,6 @@ def retrieve_next_search_chunk() -> str:
             item_id (str): the unique identifier of the item within this Emby server.
     """
     
-    ctx = mcp.get_context()
     auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
     search_results = auth_context['search_item_chunking']
 
@@ -572,7 +566,7 @@ def retrieve_next_search_chunk() -> str:
 #-------------------------
 
 @write_tool
-def create_playlist(playlist_name: str, media_type: str = "Audio", description: Optional[str] = "", item_ids: Optional[str] = "") -> str:
+def create_playlist(ctx: Context, playlist_name: str, media_type: str = "Audio", description: Optional[str] = "", item_ids: Optional[str] = "") -> str:
     """
     Create a new playlist on the Emby server with the supplied name, optional description and optional items to add.
 
@@ -589,7 +583,6 @@ def create_playlist(playlist_name: str, media_type: str = "Audio", description: 
         error (str): An error message if the request failed, otherwise None.
     """
 
-    ctx = mcp.get_context()
     auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
     e_api_client = auth_context['api_client']
     user_id = auth_context['user_id']
@@ -597,7 +590,7 @@ def create_playlist(playlist_name: str, media_type: str = "Audio", description: 
 
     if available_libraries is None or len(available_libraries) == 0:
         # No saved library data, so retrieve the list from the server
-        result = retrieve_library_list() # returns json, not useful here
+        result = retrieve_library_list(ctx) # returns json, not useful here
         available_libraries = auth_context['available_libraries']
 
     if available_libraries is not None and len(available_libraries) > 0:
@@ -628,7 +621,7 @@ def create_playlist(playlist_name: str, media_type: str = "Audio", description: 
 #--------------------------------------------------
 
 @write_tool
-def modify_playlist_name(playlist_id: str, new_name: Optional[str] = "", new_description: Optional[str] = "") -> str:
+def modify_playlist_name(ctx: Context, playlist_id: str, new_name: Optional[str] = "", new_description: Optional[str] = "") -> str:
     """
     Modifies an existing playlist on the Emby server with the supplied new name and/or new description.
 
@@ -641,7 +634,6 @@ def modify_playlist_name(playlist_id: str, new_name: Optional[str] = "", new_des
         Str: success messsage or error message.
     """
 
-    ctx = mcp.get_context()
     auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
     e_api_client = auth_context['api_client']
     user_id = auth_context['user_id']
@@ -649,7 +641,7 @@ def modify_playlist_name(playlist_id: str, new_name: Optional[str] = "", new_des
 
     if available_libraries is None or len(available_libraries) == 0:
         # No saved library data, so retrieve the list from the server
-        result = retrieve_library_list() # returns json, not useful here
+        result = retrieve_library_list(ctx) # returns json, not useful here
         available_libraries = auth_context['available_libraries']
 
     if available_libraries is not None and len(available_libraries) > 0:
@@ -674,7 +666,7 @@ def modify_playlist_name(playlist_id: str, new_name: Optional[str] = "", new_des
 #--------------------------------------------------
 
 @mcp.tool()
-def retrieve_playlist_list(playlist_id: Optional[str] = "") -> str:
+def retrieve_playlist_list(ctx: Context, playlist_id: Optional[str] = "") -> str:
     """
     Retrieve a list of playlists available to us on the Emby media server in JSON format.
     If you supply an optional playlist_id then only information about this playlist will be returned.
@@ -698,7 +690,6 @@ def retrieve_playlist_list(playlist_id: Optional[str] = "") -> str:
         playlist_id (str): The unique identifier for the list
     """
 
-    ctx = mcp.get_context()
     auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
     e_api_client = auth_context['api_client']
     user_id = auth_context['user_id']
@@ -706,7 +697,7 @@ def retrieve_playlist_list(playlist_id: Optional[str] = "") -> str:
 
     if available_libraries is None or len(available_libraries) == 0:
         # No saved library data, so retrieve the list from the server
-        library_list = retrieve_library_list() # returns json which is not useful here
+        library_list = retrieve_library_list(ctx) # returns json which is not useful here
         available_libraries = auth_context['available_libraries']
 
     if available_libraries is not None and len(available_libraries) > 0:
@@ -731,7 +722,7 @@ def retrieve_playlist_list(playlist_id: Optional[str] = "") -> str:
 #--------------------------------------------------
 
 @mcp.tool()
-def retrieve_playlist_items(playlist_id: str) -> str:
+def retrieve_playlist_items(ctx: Context, playlist_id: str) -> str:
     """
     Retrieve the list of media items that are on a playlist from the Emby server in JSON format.
 
@@ -761,7 +752,6 @@ def retrieve_playlist_items(playlist_id: str) -> str:
         playlist_item_index (str): the position of the item within this playlist.
     """
 
-    ctx = mcp.get_context()
     auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
     e_api_client = auth_context['api_client']
     user_id = auth_context['user_id']
@@ -777,7 +767,7 @@ def retrieve_playlist_items(playlist_id: str) -> str:
 #--------------------------------------------------
 
 @write_tool
-def add_items_to_playlist(playlist_id: str, item_ids: str) -> str:
+def add_items_to_playlist(ctx: Context, playlist_id: str, item_ids: str) -> str:
     """
     Adds one or more items to the end of an existing playlist on the Emby server.
 
@@ -789,7 +779,6 @@ def add_items_to_playlist(playlist_id: str, item_ids: str) -> str:
         Str: success messsage or error message.
     """
 
-    ctx = mcp.get_context()
     auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
     e_api_client = auth_context['api_client']
     user_id = auth_context['user_id']
@@ -805,7 +794,7 @@ def add_items_to_playlist(playlist_id: str, item_ids: str) -> str:
 #--------------------------------------------------
 
 @write_tool
-def remove_items_from_playlist(playlist_id: str, playlist_item_numbers: str) -> str:
+def remove_items_from_playlist(ctx: Context, playlist_id: str, playlist_item_numbers: str) -> str:
     """
     Removes one or more items from an existing playlist on the Emby server.
 
@@ -817,7 +806,6 @@ def remove_items_from_playlist(playlist_id: str, playlist_item_numbers: str) -> 
         Str: success messsage or error message.
     """
 
-    ctx = mcp.get_context()
     auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
     e_api_client = auth_context['api_client']
     user_id = auth_context['user_id']
@@ -833,7 +821,7 @@ def remove_items_from_playlist(playlist_id: str, playlist_item_numbers: str) -> 
 #--------------------------------------------------
 
 @write_tool
-def reorder_items_on_playlist(playlist_id: str, playlist_item_number: str, playlist_item_index: str) -> str:
+def reorder_items_on_playlist(ctx: Context, playlist_id: str, playlist_item_number: str, playlist_item_index: str) -> str:
     """
     Moves one items to a new position on an existing playlist on the Emby server.
 
@@ -849,7 +837,6 @@ def reorder_items_on_playlist(playlist_id: str, playlist_item_number: str, playl
         Str: success messsage or error message.
     """
 
-    ctx = mcp.get_context()
     auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
     e_api_client = auth_context['api_client']
     user_id = auth_context['user_id']
@@ -865,7 +852,7 @@ def reorder_items_on_playlist(playlist_id: str, playlist_item_number: str, playl
 #--------------------------------------------------
 
 @write_tool
-def share_playlist_public(playlist_id: str) -> str:
+def share_playlist_public(ctx: Context, playlist_id: str) -> str:
     """
     Shares an existing playlist with all other users of the Emby server as Read access.
 
@@ -876,7 +863,6 @@ def share_playlist_public(playlist_id: str) -> str:
         Str: success messsage or error message.
     """
 
-    ctx = mcp.get_context()
     auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
     e_api_client = auth_context['api_client']
 
@@ -891,7 +877,7 @@ def share_playlist_public(playlist_id: str) -> str:
 #--------------------------------------------------
 
 @write_tool
-def share_playlist_user_access(playlist_id: str, user_ids: str, access_level:str) -> str:
+def share_playlist_user_access(ctx: Context, playlist_id: str, user_ids: str, access_level:str) -> str:
     """
     Shares an existing playlist with specific users of the Emby server and specifi access rights.
     
@@ -910,7 +896,6 @@ def share_playlist_user_access(playlist_id: str, user_ids: str, access_level:str
     if access_level == 'Full Control': # the friendly access name
         access_level = 'ManageDelete' # the actual Emby access name
 
-    ctx = mcp.get_context()
     auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
     e_api_client = auth_context['api_client']
 
@@ -926,7 +911,7 @@ def share_playlist_user_access(playlist_id: str, user_ids: str, access_level:str
 #--------------------------------------------------
 
 @write_tool
-def stop_sharing_playlist(playlist_id: str) -> str:
+def stop_sharing_playlist(ctx: Context, playlist_id: str) -> str:
     """
     Stop the public sharing of an existing playlist with other users of the Emby server.
     If a user was granted specific access then they will still retain that access after you stop public sharing - use tool 
@@ -940,7 +925,6 @@ def stop_sharing_playlist(playlist_id: str) -> str:
         Str: success messsage or error message.
     """
 
-    ctx = mcp.get_context()
     auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
     e_api_client = auth_context['api_client']
 
@@ -957,7 +941,7 @@ def stop_sharing_playlist(playlist_id: str) -> str:
 #-------------------------
 
 @mcp.tool()
-def retrieve_player_list(media_type: Optional[str] = "") -> str:
+def retrieve_player_list(ctx: Context, media_type: Optional[str] = "") -> str:
     """
     Retrieve a list of media players that we can use with the supplied media type in JSON format.
     A human may use any JSON field to identify a player, but do not display the 'device_id' or 'session_id'
@@ -988,7 +972,6 @@ def retrieve_player_list(media_type: Optional[str] = "") -> str:
         now_playing_is_paused (bool): True if player is active and the current item is paused.
     """
 
-    ctx = mcp.get_context()
     auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
     e_api_client = auth_context['api_client']
     user_id = auth_context['user_id']
@@ -1004,7 +987,7 @@ def retrieve_player_list(media_type: Optional[str] = "") -> str:
 #--------------------------------------------------
 
 @mcp.tool()
-def retrieve_player_queue(session_id: str) -> str:
+def retrieve_player_queue(ctx: Context, session_id: str) -> str:
     """
     Retrieve a list of items in the play queue of a media player in JSON format.
 
@@ -1032,7 +1015,6 @@ def retrieve_player_queue(session_id: str) -> str:
         playlist_item_id (str): Unique ID of item within this play queue only
     """
 
-    ctx = mcp.get_context()
     auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
     e_api_client = auth_context['api_client']
     user_id = auth_context['user_id']
@@ -1048,7 +1030,7 @@ def retrieve_player_queue(session_id: str) -> str:
 #--------------------------------------------------
 
 @write_tool
-def control_media_player(session_id: str, command: str, item_ids: Optional[str] = None, time_milliseconds: Optional[int] = None) -> str:
+def control_media_player(ctx: Context, session_id: str, command: str, item_ids: Optional[str] = None, time_milliseconds: Optional[int] = None) -> str:
     """
     Control the media player identified as 'session_id' by sending it a 'command'. 
     Valid commands are: 'PlayNow', 'Stop', 'Pause', 'Unpause', 'NextTrack', 'PreviousTrack', 'Seek', 'Rewind', 'FastForward'.
@@ -1065,7 +1047,6 @@ def control_media_player(session_id: str, command: str, item_ids: Optional[str] 
         Str: success messsage or error message.
     """
 
-    ctx = mcp.get_context()
     auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
     e_api_client = auth_context['api_client']
     user_id = auth_context['user_id']
@@ -1096,35 +1077,33 @@ def control_media_player(session_id: str, command: str, item_ids: Optional[str] 
 
 if __name__ == "__main__":
 
-    if MY_DEBUG:
+    if DEBUG:
         # If in debug mode, run interactive Emby functionality tests (see lib_emby_debugging.py)
         from lib_emby_debugging import test_emby_functions
-        test_emby_functions(MY_NAME, MY_VERSION, MY_PLATFORM, MY_HOSTNAME)
+        test_emby_functions(APP_NAME, APP_VERSION, PLATFORM_NAME, HOSTNAME_NAME)
 
     else:
         # Run some startup checks 
-        print(f"\n{MY_LICENSE}\n\nRunning startup checks...", file=sys.stderr)
+        print(f"\n{LICENSE_NOTICE}\n\nRunning startup checks...", file=sys.stderr)
 
-        # Load login environment variables from .env file
+        # Load login environment variables. A .env file is optional; real process
+        # environment variables (eg from `docker run -e ...`) work equally well.
         env_file = find_dotenv('.env', usecwd=True)
         if env_file:
             load_dotenv(env_file, override=True)
-            server_url = os.getenv("EMBY_SERVER_URL")
-            username = os.getenv("EMBY_USERNAME")
-            api_key = os.getenv("EMBY_API_KEY")
-            verify_ssl = str_to_bool(os.getenv("EMBY_VERIFY_SSL", "True"))
-            max_chunk_size = os.getenv("LLM_MAX_ITEMS")
-            if server_url == None or username == None or api_key == None:
-                print("Fatal error, missing required variables. Ensure the .env file contains EMBY_SERVER_URL, EMBY_USERNAME, EMBY_API_KEY", file=sys.stderr)
-                sys.exit(1)
-        else:
-            print("Fatal error, cannot find the .env file. Ensure that it exists in the same directory as script.", file=sys.stderr)
+        server_url = os.getenv("EMBY_SERVER_URL")
+        username = os.getenv("EMBY_USERNAME")
+        api_key = os.getenv("EMBY_API_KEY")
+        verify_ssl = str_to_bool(os.getenv("EMBY_VERIFY_SSL", "True"))
+        max_chunk_size = get_max_chunk_size()
+        if server_url == None or username == None or api_key == None:
+            print("Fatal error, missing required variables. Ensure EMBY_SERVER_URL, EMBY_USERNAME, EMBY_API_KEY are set (via a .env file or the process environment)", file=sys.stderr)
             sys.exit(1)
 
         # Login to Emby server
-        device_name = MY_HOSTNAME + " (" + MY_PLATFORM + ")"  # shown in Emby server logs & devices page
-        client_name = f"{MY_NAME}"  # shown in Emby server logs & devices page
-        result = authenticate_with_emby_apikey(server_url, api_key, username, client_name, MY_VERSION, device_name, verify_ssl)
+        device_name = HOSTNAME_NAME + " (" + PLATFORM_NAME + ")"  # shown in Emby server logs & devices page
+        client_name = f"{APP_NAME}"  # shown in Emby server logs & devices page
+        result = authenticate_with_emby_apikey(server_url, api_key, username, client_name, APP_VERSION, device_name, verify_ssl)
         if result['success']:
             e_api_client = result['api_client']
             print(f"Logon to media server was successful.", file=sys.stderr)

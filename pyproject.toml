@@ -1,12 +1,22 @@
 [project]
 name = "emby-mcp"
-version = "0.3.0"
+version = "0.4.0"
 description = "Model Context Protocol (MCP) server that connects an Emby media server to an AI client such as Claude Desktop."
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "dotenv>=0.9.9",
+    "python-dotenv>=1.1.0",
     "embyclient>=4.9.0.33",
-    "mcp[cli]>=1.9.4",
+    "mcp[cli]>=2.0.0,<3.0.0",
     "unidecode>=1.4.0",
 ]
+
+[tool.pyright]
+# embyclient is a Swagger-generated SDK with no py.typed marker / stubs. With the default
+# useLibraryCodeForTypes=true, Pyright deep-infers types from its dynamic deserialize()
+# implementation and produces hundreds of false-positive "Cannot access attribute" errors
+# built from unrelated union members (str, dict, datetime, AsyncResult, ...). Disabling
+# this for the whole workspace makes Pyright/Pylance fall back to Unknown for embyclient's
+# return values instead, which is accurate for an untyped third-party dependency, while our
+# own two source files are still fully type-checked normally.
+useLibraryCodeForTypes = false

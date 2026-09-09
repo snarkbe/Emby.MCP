@@ -1636,3 +1636,290 @@ def send_player_command(e_api_client: object, session_id: str, command: str, **k
         }
 
 #--------------------------------------------------
+# Collection Functions
+#-------------------------
+
+def get_collections(e_api_client: object, user_id: str, collection_id: Optional[str] = "") ->dict:
+    """
+    Get a list of collections (Emby 'BoxSet' items, ie curated groups of movies/shows) from the Emby server.
+
+    Args:
+        e_api_client (obj): The authenticated API client.
+        user_id (str): The ID of the user doing the search.
+        collection_id (str, optional): if supplied, only return information about this collection
+
+    Returns:
+        dict: A dictionary with keys:
+        collections (list of dict): A list of dictionaries containing collection information:
+            name (str): collection name
+            overview (str): short description
+            genres (list of str): the collection's own genre tags (not aggregated from its contents)
+            date_created (str): date the collection was created
+            item_count (int): the number of items in the collection
+            collection_id (str): the unique identifier for the collection
+        success (bool): True if the request was successful, False otherwise.
+        error (str): An error message if the request failed, otherwise None.
+    """
+
+    api_instance = emby_client.ItemsServiceApi(e_api_client)
+    extrafields = 'Genres,DateCreated,Overview,ChildCount'
+    kwargs = {}
+    if collection_id != '':
+        kwargs['ids'] = collection_id
+
+    try:
+        api_response = api_instance.get_users_by_userid_items(user_id, include_item_types='BoxSet', recursive=True, fields=extrafields, **kwargs)
+        total_count = api_response.total_record_count
+        if total_count > 0:
+            items_list = api_response.items
+            filtered_items = [
+                {
+                    'name': item.name if item.name else "",
+                    'overview': item.overview if item.overview else "",
+                    'genres': item.genres if item.genres else [],
+                    'date_created': item.date_created.isoformat() if item.date_created else "",
+                    'item_count': item.child_count if item.child_count else 0,
+                    'collection_id': item.id if item.id else ""
+                }
+                for item in items_list
+            ]
+        else:
+            filtered_items = []
+        return {
+            'success': True,
+            'collections': filtered_items
+        }
+
+    except ApiException as e:
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
+#--------------------------------------------------
+
+def get_collection_items(e_api_client: object, user_id: str, collection_id: str) ->dict:
+    """
+    Get the media items directly in a collection (Emby 'BoxSet') from the Emby server. Returns
+    only the collection's direct children (eg the Movies or Series added to it), not their own
+    nested contents such as episodes. Unlike get_items(), this is not restricted to 'Audio' or
+    'Video' items, since a collection may also directly contain other item types (eg 'Series').
+
+    Args:
+        e_api_client (obj): The authenticated API client.
+        user_id (str): The ID of the user doing the search.
+        collection_id (str): The ID of the collection.
+
+    Returns:
+        dict: A dictionary with keys:
+        items (list of dict): A list of items directly in the collection:
+            title (str): the title of the item.
+            item_type (str): the Emby item type, eg 'Movie', 'Series', 'Audio'.
+            overview (str): the short description of the item.
+            genres (list of str): the genres tagged to the item
+            production_year (int): the year of release
+            premiere_date (str, ISO format): the date of first release / broadcast of the item.
+            run_time (str): the run time of the item as hh:mm:ss, if applicable.
+            item_id (str): the unique identifier of the item within this Emby server.
+        success (bool): True if the request was successful, False otherwise.
+        error (str): An error message if the request failed, otherwise None.
+    """
+
+    api_instance = emby_client.ItemsServiceApi(e_api_client)
+    extrafields = 'Genres,Overview,ProductionYear,PremiereDate'
+
+    try:
+        api_response = api_instance.get_users_by_userid_items(user_id, parent_id=collection_id, recursive=False, fields=extrafields)
+        total_count = api_response.total_record_count
+        if total_count > 0:
+            items_list = api_response.items
+            filtered_items = [
+                {
+                    'title': item.name if item.name else "",
+                    'item_type': item.type if item.type else "",
+                    'overview': item.overview if item.overview else "",
+                    'genres': item.genres if item.genres else [],
+                    'production_year': item.production_year if item.production_year else "",
+                    'premiere_date': item.premiere_date.isoformat() if item.premiere_date else "",
+                    'run_time_ticks': item.run_time_ticks if item.run_time_ticks else 0,
+                    'run_time': "",  # Placeholder for run time, will be filled in below
+                    'item_id': item.id if item.id else ""
+                }
+                for item in items_list
+            ]
+            for item in filtered_items:
+                if item['run_time_ticks'] > 0:
+                    total_seconds = int(item['run_time_ticks'] / 10000000) # convert from ticks
+                    tthours = total_seconds // 3600
+                    ttmins = (total_seconds % 3600) // 60
+                    ttsecs = total_seconds % 60
+                    item['run_time'] = f"{str(tthours).zfill(2)}:{str(ttmins).zfill(2)}:{str(ttsecs).zfill(2)}"
+                item.pop('run_time_ticks', None)
+        else:
+            filtered_items = []
+        return {
+            'success': True,
+            'items': filtered_items
+        }
+
+    except ApiException as e:
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
+#--------------------------------------------------
+
+def new_collection(e_api_client: object, collection_name: str, item_ids: Optional[str] = "") ->dict:
+    """
+    Creates a new collection (Emby 'BoxSet') on the Emby server, optionally seeded with items.
+    Unlike playlists, Emby does not enforce unique collection names.
+
+    Args:
+        e_api_client (obj): The authenticated API client.
+        collection_name (str): The name of the new collection.
+        item_ids (str, optional): A comma-separated list of item IDs to add to the collection at creation time.
+
+    Returns:
+        dict: A dictionary with keys:
+        collection_id (str): the unique identifier of the collection within this Emby server.
+        success (bool): True if the request was successful, False otherwise.
+        error (str): An error message if the request failed, otherwise None.
+    """
+
+    if collection_name is None or collection_name.strip() == "":
+        return {
+            'success': False,
+            'error': 'Collection name cannot be empty.'
+        }
+
+    kwargs = {}
+    if item_ids is not None and item_ids != "":
+        kwargs['ids'] = item_ids
+
+    api_instance = emby_client.CollectionServiceApi(e_api_client)
+    try:
+        api_response = api_instance.post_collections(name=collection_name, **kwargs)
+        if api_response is not None and api_response.id is not None:
+            return {
+                'success': True,
+                'collection_id': api_response.id
+            }
+        else:
+            return {
+                'success': False,
+                'error': 'Failed to create collection.'
+            }
+
+    except ApiException as e:
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
+#--------------------------------------------------
+
+def add_collection_items(e_api_client: object, collection_id: str, item_ids: str) ->dict:
+    """
+    Adds one or more items to an existing collection on the Emby server.
+
+    Args:
+        e_api_client (obj): The authenticated API client.
+        collection_id (str): The ID of the existing collection.
+        item_ids (str): A comma-separated list of item IDs to add to the collection.
+
+    Returns:
+        dict: A dictionary with keys:
+        success (bool): True if the request was successful, False otherwise.
+        error (str): An error message if the request failed, otherwise None.
+    """
+    api_instance = emby_client.CollectionServiceApi(e_api_client)
+    try:
+        api_instance.post_collections_by_id_items(item_ids, collection_id)
+        return {
+            'success': True
+        }
+
+    except ApiException as e:
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
+#--------------------------------------------------
+
+def remove_collection_items(e_api_client: object, collection_id: str, item_ids: str) ->dict:
+    """
+    Removes one or more items from an existing collection on the Emby server. This does not
+    delete the items themselves, only their membership of the collection.
+
+    Args:
+        e_api_client (obj): The authenticated API client.
+        collection_id (str): The ID of the existing collection.
+        item_ids (str): A comma-separated list of item IDs to remove from the collection.
+
+    Returns:
+        dict: A dictionary with keys:
+        success (bool): True if the request was successful, False otherwise.
+        error (str): An error message if the request failed, otherwise None.
+    """
+    api_instance = emby_client.CollectionServiceApi(e_api_client)
+    try:
+        api_instance.post_collections_by_id_items_delete(item_ids, collection_id)
+        return {
+            'success': True
+        }
+
+    except ApiException as e:
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
+#--------------------------------------------------
+
+def remove_collection(e_api_client: object, user_id: str, collection_id: str) ->dict:
+    """
+    Deletes a collection (Emby 'BoxSet') from the Emby server. This only removes the collection
+    grouping itself; the underlying media items and their files are not affected.
+
+    Args:
+        e_api_client (obj): The authenticated API client.
+        user_id (str): The ID of the user doing the deleting (used to verify collection_id is a collection).
+        collection_id (str): The ID of the collection to delete.
+
+    Returns:
+        dict: A dictionary with keys:
+        success (bool): True if the request was successful, False otherwise.
+        error (str): An error message if the request failed, otherwise None.
+    """
+    # The underlying Emby endpoint is a generic item-delete that will happily delete any media
+    # item (and its file, for a user with content-deletion rights) regardless of its type. Refuse
+    # to call it unless collection_id actually resolves to a BoxSet, so a wrong or mistyped ID
+    # (eg a movie's item_id) can never be deleted as a side effect of this function.
+    verify_result = get_collections(e_api_client, user_id, collection_id)
+    if not verify_result['success']:
+        return {
+            'success': False,
+            'error': verify_result['error']
+        }
+    if not verify_result['collections']:
+        return {
+            'success': False,
+            'error': f"Item ID {collection_id} is not a collection. Refusing to delete it to avoid accidentally deleting the wrong item."
+        }
+
+    api_instance = emby_client.LibraryServiceApi(e_api_client)
+    try:
+        api_instance.delete_items_by_id(collection_id)
+        return {
+            'success': True
+        }
+
+    except ApiException as e:
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
+#--------------------------------------------------

@@ -148,7 +148,7 @@ async def app_lifespan(server: MCPServer) ->AsyncIterator[dict]:
         auth_context['search_item_chunking'] = {}
         print(f"Logon to media server was successful. \n\n{LICENSE_NOTICE}", file=sys.stderr)
         if READONLY_MODE:
-            print("Read-only mode is enabled. Playlist and player control tools are not available.", file=sys.stderr)
+            print("Read-only mode is enabled. Playlist, collection, favorite/watched/rating, player control and library maintenance tools are not available.", file=sys.stderr)
     else:
         print(f"Fatal ERROR: login to media server failed: {auth_context['error']}", file=sys.stderr)
         sys.exit(1)
@@ -933,6 +933,190 @@ def stop_sharing_playlist(ctx: Context, playlist_id: str) -> str:
         return f"Successfully stopped sharing playlist with other users."
     else:
         error_str = f"ERROR: failed to stop sharing playlist ID {playlist_id} because: {result['error']}"
+        print(error_str, file=sys.stderr)
+        return error_str
+
+#--------------------------------------------------
+# Collection Tools
+#-------------------------
+
+@mcp.tool()
+def retrieve_collection_list(ctx: Context, collection_id: Optional[str] = "") -> str:
+    """
+    Retrieve a list of collections (curated groups of movies/shows, called 'BoxSets' by Emby) on the
+    Emby media server in JSON format. If you supply an optional collection_id then only information
+    about this collection will be returned.
+
+    Args:
+        collection_id (str, optional): The 'collection_id' of a specific collection to filter to (eg from tool
+                                        create_collection, or from a previous call to this tool), or an empty
+                                        string to list all collections.
+
+    Returns:
+        List of dict: as JSON with keys:
+        name (str): collection name
+        overview (str): short description
+        genres (list of str): the collection's own genre tags (not aggregated from its contents)
+        date_created (str): date the collection was created
+        item_count (int): the number of items in the collection
+        collection_id (str): the unique identifier for the collection
+    """
+
+    auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
+    e_api_client = auth_context['api_client']
+    user_id = auth_context['user_id']
+
+    result = get_collections(e_api_client, user_id, collection_id)
+    if result['success']:
+        return json.dumps(result['collections'])
+    else:
+        error_str = f"ERROR: failed to retrieve list of collections because: {result['error']}"
+        print(error_str, file=sys.stderr)
+        return error_str
+
+#--------------------------------------------------
+
+@mcp.tool()
+def retrieve_collection_items(ctx: Context, collection_id: str) -> str:
+    """
+    Retrieve the list of media items directly in a collection from the Emby server in JSON format.
+    Returns only the collection's direct children (eg the Movies or Series added to it), not their
+    own nested contents such as episodes.
+
+    Args:
+        collection_id (str): The ID of the collection to list, obtained from tool retrieve_collection_list.
+
+    Returns:
+        List of dict: as JSON with keys:
+        title (str): the title of the item.
+        item_type (str): the Emby item type, eg 'Movie', 'Series', 'Audio'.
+        overview (str): the short description of the item.
+        genres (list of str): the genres tagged to the item
+        production_year (int): the year of release
+        premiere_date (str, ISO format): the date of first release / broadcast of the item.
+        run_time (str): the run time of the item as hh:mm:ss, if applicable.
+        item_id (str): the unique identifier of the item within this Emby server.
+    """
+
+    auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
+    e_api_client = auth_context['api_client']
+    user_id = auth_context['user_id']
+
+    result = get_collection_items(e_api_client, user_id, collection_id)
+    if result['success']:
+        return json.dumps(result['items'])
+    else:
+        error_str = f"ERROR: failed to retrieve list of items for collection ID {collection_id} because: {result['error']}"
+        print(error_str, file=sys.stderr)
+        return error_str
+
+#--------------------------------------------------
+
+@write_tool
+def create_collection(ctx: Context, collection_name: str, item_ids: Optional[str] = "") -> str:
+    """
+    Create a new collection on the Emby server with the supplied name and optional items to seed it with.
+    Unlike playlists, Emby does not enforce unique collection names.
+
+    Args:
+        collection_name (str): The name of the collection to create
+        item_ids (str, optional): The ID of one or more items obtained from tool search_for_item to add to the collection as a comma separated list
+
+    Returns:
+        Dict: as JSON with keys:
+        collection_id (str): the unique identifier of the collection within this Emby server.
+        success (bool): True if the request was successful, False if an error occured.
+        error (str): An error message if the request failed, otherwise None.
+    """
+
+    auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
+    e_api_client = auth_context['api_client']
+
+    result = new_collection(e_api_client, collection_name, item_ids)
+    if result['success']:
+        return json.dumps(result)
+    else:
+        error_str = f"ERROR: failed to create collection because: {result['error']}"
+        print(error_str, file=sys.stderr)
+        return error_str
+
+#--------------------------------------------------
+
+@write_tool
+def add_items_to_collection(ctx: Context, collection_id: str, item_ids: str) -> str:
+    """
+    Adds one or more items to an existing collection on the Emby server.
+
+    Args:
+        collection_id (str): The ID of the collection to add to, obtained from tool retrieve_collection_list.
+        item_ids (str): The ID of one or more items obtained from tool search_for_item as a comma separated list to add to the collection.
+
+    Returns:
+        Str: success messsage or error message.
+    """
+
+    auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
+    e_api_client = auth_context['api_client']
+
+    result = add_collection_items(e_api_client, collection_id, item_ids)
+    if result['success']:
+        return "Successfully added items to collection."
+    else:
+        error_str = f"ERROR: failed to add items to collection ID {collection_id} because: {result['error']}"
+        print(error_str, file=sys.stderr)
+        return error_str
+
+#--------------------------------------------------
+
+@write_tool
+def remove_items_from_collection(ctx: Context, collection_id: str, item_ids: str) -> str:
+    """
+    Removes one or more items from an existing collection on the Emby server. This does not delete
+    the items themselves, only their membership of the collection.
+
+    Args:
+        collection_id (str): The ID of the collection to remove from, obtained from tool retrieve_collection_list.
+        item_ids (str): The ID of one or more items obtained from tool retrieve_collection_items as a comma separated list to remove from the collection.
+
+    Returns:
+        Str: success messsage or error message.
+    """
+
+    auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
+    e_api_client = auth_context['api_client']
+
+    result = remove_collection_items(e_api_client, collection_id, item_ids)
+    if result['success']:
+        return "Successfully removed items from collection."
+    else:
+        error_str = f"ERROR: failed to remove items from collection ID {collection_id} because: {result['error']}"
+        print(error_str, file=sys.stderr)
+        return error_str
+
+#--------------------------------------------------
+
+@write_tool
+def delete_collection(ctx: Context, collection_id: str) -> str:
+    """
+    Deletes a collection from the Emby server. This only removes the collection grouping itself;
+    the underlying media items and their files are not affected or deleted.
+
+    Args:
+        collection_id (str): The ID of the collection to delete, obtained from tool retrieve_collection_list.
+
+    Returns:
+        Str: success messsage or error message.
+    """
+
+    auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
+    e_api_client = auth_context['api_client']
+    user_id = auth_context['user_id']
+
+    result = remove_collection(e_api_client, user_id, collection_id)
+    if result['success']:
+        return "Successfully deleted collection."
+    else:
+        error_str = f"ERROR: failed to delete collection ID {collection_id} because: {result['error']}"
         print(error_str, file=sys.stderr)
         return error_str
 

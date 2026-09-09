@@ -11,6 +11,7 @@ MCP server that connects an Emby media server to any MCP-compatible AI client (C
 - Browse media libraries, genres, and items (search by title, artist, album, year, lyrics)
 - List and manage playlists (create, edit, reorder, share)
 - List and manage collections (create, add/remove items, delete)
+- Mark items as favorite/watched and set a personal like/dislike rating
 - Control media players (play, pause, seek, queue)
 - Read-only mode: disable all write operations via a single env var
 - Chunked search results to stay within LLM context limits
@@ -157,6 +158,9 @@ Set `EMBY_READONLY = True` in `.env` to prevent the LLM from modifying anything.
 
 | Tool | Action |
 |---|---|
+| `set_item_favorite` | Marks/unmarks an item as a favorite |
+| `set_item_watched` | Marks an item as watched/unwatched |
+| `rate_item` | Sets/clears your like/dislike rating for an item |
 | `create_playlist` | Creates a playlist |
 | `modify_playlist_name` | Renames / redescribes a playlist |
 | `add_items_to_playlist` | Adds items to a playlist |

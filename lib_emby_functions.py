@@ -1923,3 +1923,115 @@ def remove_collection(e_api_client: object, user_id: str, collection_id: str) ->
         }
 
 #--------------------------------------------------
+# User Item Data Functions (favorites, ratings, watched state)
+#-------------------------
+
+def update_item_favorite(e_api_client: object, user_id: str, item_id: str, is_favorite: bool) ->dict:
+    """
+    Marks or unmarks a media item as a favorite for the given user on the Emby server.
+
+    Args:
+        e_api_client (obj): The authenticated API client.
+        user_id (str): The ID of the user whose favorite status is being changed.
+        item_id (str): The ID of the item to mark or unmark.
+        is_favorite (bool): True to mark the item as a favorite, False to remove it.
+
+    Returns:
+        dict: A dictionary with keys:
+        is_favorite (bool): The item's favorite status after the change.
+        success (bool): True if the request was successful, False otherwise.
+        error (str): An error message if the request failed, otherwise None.
+    """
+    api_instance = emby_client.UserLibraryServiceApi(e_api_client)
+    try:
+        if is_favorite:
+            api_response = api_instance.post_users_by_userid_favoriteitems_by_id(user_id, item_id)
+        else:
+            api_response = api_instance.post_users_by_userid_favoriteitems_by_id_delete(user_id, item_id)
+        return {
+            'success': True,
+            'is_favorite': api_response.is_favorite if api_response is not None else is_favorite
+        }
+
+    except ApiException as e:
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
+#--------------------------------------------------
+
+def update_item_played(e_api_client: object, user_id: str, item_id: str, is_played: bool) ->dict:
+    """
+    Marks a media item as played (watched) or unplayed for the given user on the Emby server.
+
+    Args:
+        e_api_client (obj): The authenticated API client.
+        user_id (str): The ID of the user whose watched status is being changed.
+        item_id (str): The ID of the item to mark.
+        is_played (bool): True to mark the item as played, False to mark it as unplayed.
+
+    Returns:
+        dict: A dictionary with keys:
+        played (bool): The item's played status after the change.
+        success (bool): True if the request was successful, False otherwise.
+        error (str): An error message if the request failed, otherwise None.
+    """
+    api_instance = emby_client.PlaystateServiceApi(e_api_client)
+    try:
+        if is_played:
+            api_response = api_instance.post_users_by_userid_playeditems_by_id(user_id, item_id)
+        else:
+            api_response = api_instance.post_users_by_userid_playeditems_by_id_delete(user_id, item_id)
+        return {
+            'success': True,
+            'played': api_response.played if api_response is not None else is_played
+        }
+
+    except ApiException as e:
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
+#--------------------------------------------------
+
+def update_item_rating(e_api_client: object, user_id: str, item_id: str, rating: str) ->dict:
+    """
+    Sets or clears the given user's personal like/dislike rating for a media item on the Emby server.
+
+    Args:
+        e_api_client (obj): The authenticated API client.
+        user_id (str): The ID of the user whose rating is being changed.
+        item_id (str): The ID of the item to rate.
+        rating (str): One of 'Like', 'Dislike', or 'None' (clears any existing rating).
+
+    Returns:
+        dict: A dictionary with keys:
+        success (bool): True if the request was successful, False otherwise.
+        error (str): An error message if the request failed, otherwise None.
+    """
+    api_instance = emby_client.UserLibraryServiceApi(e_api_client)
+    try:
+        if rating.lower() == 'like':
+            api_instance.post_users_by_userid_items_by_id_rating(user_id, item_id, True)
+        elif rating.lower() == 'dislike':
+            api_instance.post_users_by_userid_items_by_id_rating(user_id, item_id, False)
+        elif rating.lower() == 'none':
+            api_instance.post_users_by_userid_items_by_id_rating_delete(user_id, item_id)
+        else:
+            return {
+                'success': False,
+                'error': f"Invalid rating: {rating}. Must be one of: Like, Dislike, None."
+            }
+        return {
+            'success': True
+        }
+
+    except ApiException as e:
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
+#--------------------------------------------------

@@ -562,6 +562,89 @@ def retrieve_next_search_chunk(ctx: Context) -> str:
     return json.dumps({})
 
 #--------------------------------------------------
+# Item Favorites & Watched-State Tools
+#-------------------------
+
+@write_tool
+def set_item_favorite(ctx: Context, item_id: str, is_favorite: bool = True) -> str:
+    """
+    Marks or unmarks a media item as one of your favorites on the Emby server.
+
+    Args:
+        item_id (str): The ID of the item obtained from tool search_for_item.
+        is_favorite (bool, optional): True to mark the item as a favorite, False to remove it. Defaults to True.
+
+    Returns:
+        Str: success messsage or error message.
+    """
+
+    auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
+    e_api_client = auth_context['api_client']
+    user_id = auth_context['user_id']
+
+    result = update_item_favorite(e_api_client, user_id, item_id, is_favorite)
+    if result['success']:
+        return f"Successfully {'marked' if is_favorite else 'unmarked'} item as favorite."
+    else:
+        error_str = f"ERROR: failed to update favorite status for item ID {item_id} because: {result['error']}"
+        print(error_str, file=sys.stderr)
+        return error_str
+
+#--------------------------------------------------
+
+@write_tool
+def set_item_watched(ctx: Context, item_id: str, is_watched: bool = True) -> str:
+    """
+    Marks a media item as watched or unwatched for you on the Emby server.
+
+    Args:
+        item_id (str): The ID of the item obtained from tool search_for_item.
+        is_watched (bool, optional): True to mark the item as watched, False to mark it as unwatched. Defaults to True.
+
+    Returns:
+        Str: success messsage or error message.
+    """
+
+    auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
+    e_api_client = auth_context['api_client']
+    user_id = auth_context['user_id']
+
+    result = update_item_played(e_api_client, user_id, item_id, is_watched)
+    if result['success']:
+        return f"Successfully marked item as {'watched' if is_watched else 'unwatched'}."
+    else:
+        error_str = f"ERROR: failed to update watched status for item ID {item_id} because: {result['error']}"
+        print(error_str, file=sys.stderr)
+        return error_str
+
+#--------------------------------------------------
+
+@write_tool
+def rate_item(ctx: Context, item_id: str, rating: str) -> str:
+    """
+    Sets or clears your personal like/dislike rating for a media item on the Emby server.
+
+    Args:
+        item_id (str): The ID of the item obtained from tool search_for_item.
+        rating (str): One of 'Like', 'Dislike', or 'None' to clear any existing rating.
+
+    Returns:
+        Str: success messsage or error message.
+    """
+
+    auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
+    e_api_client = auth_context['api_client']
+    user_id = auth_context['user_id']
+
+    result = update_item_rating(e_api_client, user_id, item_id, rating)
+    if result['success']:
+        return "Successfully updated item rating."
+    else:
+        error_str = f"ERROR: failed to update rating for item ID {item_id} because: {result['error']}"
+        print(error_str, file=sys.stderr)
+        return error_str
+
+#--------------------------------------------------
 # Playlist Tools
 #-------------------------
 

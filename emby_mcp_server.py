@@ -9,24 +9,14 @@ an interface for AI applications such as Claude Desktop to query and control a m
 See README.md for details on features, installation and usage.
 
 Copyright (C) 2025 Dominic Search <code@angeltek.co.uk>
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, version 3 of the License.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
+Modified 2026 by Gilles Reichert <gilles@reichertonline.be>.
+Licensed under the GNU General Public License v3 (or later). No warranty; see LICENSE.txt.
 """
 
 #==================================================
 # Debugging - Set this True to enable debug features  
 #==================================================
-MY_DEBUG = False
+DEBUG = False
 
 #==================================================
 # Prelimanary & Initialisation
@@ -64,25 +54,23 @@ def get_max_chunk_size(default: int = 100) -> int:
         return default
 
 # Some statements about the script
-MY_NAME = "Emby.MCP"
-MY_VERSION = "1.1.0"
-MY_READONLY = str_to_bool(os.getenv("EMBY_READONLY", "False"))
-MY_PURPOSE = (
+APP_NAME = "Emby.MCP"
+APP_VERSION = "1.1.0"
+READONLY_MODE = str_to_bool(os.getenv("EMBY_READONLY", "False"))
+APP_PURPOSE = (
     "These MCP tools allow you to query an Emby media server in read-only mode. Using them you can retrieve"
     " a list of libraries, genres, playlists, audio & video items, and player sessions."
     " Playlist and player control tools are disabled in read-only mode."
-    if MY_READONLY else
+    if READONLY_MODE else
     "These MCP tools allow you to control an Emby media server. Using them you can retrieve"
     " a list of libraries, genres, playlists, audio & video items, and player sessions."
     " You can add items to playlists and play, pause and stop items on a player session."
 )
-MY_LICENSE = """Emby.MCP Copyright (C) 2025 Dominic Search <code@angeltek.co.uk>
-This program comes with ABSOLUTELY NO WARRANTY. This is free software, and you are 
-welcome to redistribute it under certain conditions; see LICENSE.txt for details."""
+LICENSE_NOTICE = "Emby.MCP Copyright (C) 2025 Dominic Search <code@angeltek.co.uk>, modified 2026 by Gilles Reichert — GPLv3, no warranty; see LICENSE.txt."
 
 # About the environment
-MY_PLATFORM = get_platform_system()  # Get the platform system name (e.g., 'Linux', 'Windows', 'Darwin')
-MY_HOSTNAME = get_platform_hostname()  # Get the platform hostname (e.g., 'my-computer.local')
+PLATFORM_NAME = get_platform_system()  # Get the platform system name (e.g., 'Linux', 'Windows', 'Darwin')
+HOSTNAME_NAME = get_platform_hostname()  # Get the platform hostname (e.g., 'my-computer.local')
 
 # Set UTF-8 encoding. Line buffering ensures immediate input/output on receiving LF or CR.
 sys.stdin = io.TextIOWrapper(sys.stdin.buffer, line_buffering=True, encoding='utf-8')
@@ -149,17 +137,17 @@ async def app_lifespan(server: MCPServer) ->AsyncIterator[dict]:
         sys.exit(1)
 
     # Login to Emby server
-    device_name = MY_HOSTNAME + " (" + MY_PLATFORM + ")"  # shown in Emby server logs & devices page
-    client_name = f"{MY_NAME} for AI"  # shown in Emby server logs & devices page
-    auth_context = authenticate_with_emby_apikey(server_url, api_key, username, client_name, MY_VERSION, device_name, verify_ssl)
+    device_name = HOSTNAME_NAME + " (" + PLATFORM_NAME + ")"  # shown in Emby server logs & devices page
+    client_name = f"{APP_NAME} for AI"  # shown in Emby server logs & devices page
+    auth_context = authenticate_with_emby_apikey(server_url, api_key, username, client_name, APP_VERSION, device_name, verify_ssl)
     if auth_context['success']:
         # Store other default context data; the API client is already in auth_context.
         auth_context['available_libraries'] = []
         auth_context['current_library'] = {}
         auth_context['max_chunk_size'] = max_chunk_size
         auth_context['search_item_chunking'] = {}
-        print(f"Logon to media server was successful. \n\n{MY_LICENSE}", file=sys.stderr)
-        if MY_READONLY:
+        print(f"Logon to media server was successful. \n\n{LICENSE_NOTICE}", file=sys.stderr)
+        if READONLY_MODE:
             print("Read-only mode is enabled. Playlist and player control tools are not available.", file=sys.stderr)
     else:
         print(f"Fatal ERROR: login to media server failed: {auth_context['error']}", file=sys.stderr)
@@ -176,11 +164,11 @@ async def app_lifespan(server: MCPServer) ->AsyncIterator[dict]:
         pass
 
 # Create the MCP server with lifespan handler
-mcp = MCPServer(name=MY_NAME, instructions=MY_PURPOSE, lifespan=app_lifespan)
+mcp = MCPServer(name=APP_NAME, instructions=APP_PURPOSE, lifespan=app_lifespan)
 
 def write_tool(func):
     """Only registers the function as an MCP tool when not in read-only mode."""
-    if not MY_READONLY:
+    if not READONLY_MODE:
         return mcp.tool()(func)
     return func
 
@@ -1089,14 +1077,14 @@ def control_media_player(ctx: Context, session_id: str, command: str, item_ids: 
 
 if __name__ == "__main__":
 
-    if MY_DEBUG:
+    if DEBUG:
         # If in debug mode, run interactive Emby functionality tests (see lib_emby_debugging.py)
         from lib_emby_debugging import test_emby_functions
-        test_emby_functions(MY_NAME, MY_VERSION, MY_PLATFORM, MY_HOSTNAME)
+        test_emby_functions(APP_NAME, APP_VERSION, PLATFORM_NAME, HOSTNAME_NAME)
 
     else:
         # Run some startup checks 
-        print(f"\n{MY_LICENSE}\n\nRunning startup checks...", file=sys.stderr)
+        print(f"\n{LICENSE_NOTICE}\n\nRunning startup checks...", file=sys.stderr)
 
         # Load login environment variables. A .env file is optional; real process
         # environment variables (eg from `docker run -e ...`) work equally well.
@@ -1113,9 +1101,9 @@ if __name__ == "__main__":
             sys.exit(1)
 
         # Login to Emby server
-        device_name = MY_HOSTNAME + " (" + MY_PLATFORM + ")"  # shown in Emby server logs & devices page
-        client_name = f"{MY_NAME}"  # shown in Emby server logs & devices page
-        result = authenticate_with_emby_apikey(server_url, api_key, username, client_name, MY_VERSION, device_name, verify_ssl)
+        device_name = HOSTNAME_NAME + " (" + PLATFORM_NAME + ")"  # shown in Emby server logs & devices page
+        client_name = f"{APP_NAME}"  # shown in Emby server logs & devices page
+        result = authenticate_with_emby_apikey(server_url, api_key, username, client_name, APP_VERSION, device_name, verify_ssl)
         if result['success']:
             e_api_client = result['api_client']
             print(f"Logon to media server was successful.", file=sys.stderr)

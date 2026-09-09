@@ -168,5 +168,4 @@ Set `EMBY_READONLY = True` in `.env` to prevent the LLM from modifying anything.
 
 ## License
 
-GPL v3 — see [LICENSE.txt](LICENSE.txt).  
-Original work © 2025 Dominic Search <code@angeltek.co.uk>.
+GPL v3, © 2025 Dominic Search <code@angeltek.co.uk>, modified 2026 by Gilles Reichert — see [LICENSE.txt](LICENSE.txt).

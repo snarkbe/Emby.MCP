@@ -1337,6 +1337,166 @@ def control_media_player(ctx: Context, session_id: str, command: str, item_ids: 
     else:
         return "ERROR: no command was supplied. Valid commands are: 'PlayNow', 'Stop', 'Pause', 'Unpause', 'NextTrack', 'PreviousTrack', 'Seek', 'Rewind', 'FastForward'."
 
+#--------------------------------------------------
+# Server & Library Maintenance Tools
+#-------------------------
+
+@mcp.tool()
+def retrieve_server_info(ctx: Context) -> str:
+    """
+    Retrieve information about the Emby server itself in JSON format.
+
+    Args:
+        None
+
+    Returns:
+        Dict: as JSON with keys:
+        server_name (str): The name of the Emby server.
+        version (str): The Emby server software version.
+        server_id (str): The unique identifier of this Emby server.
+        operating_system (str): The operating system the server is running on.
+        local_address (str): The local network address of the server.
+        wan_address (str): The remote/WAN address of the server, if configured.
+        has_pending_restart (bool): True if the server has a pending restart.
+        is_shutting_down (bool): True if the server is currently shutting down.
+        has_update_available (bool): True if a server software update is available.
+    """
+
+    auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
+    e_api_client = auth_context['api_client']
+
+    result = get_server_info(e_api_client)
+    if result['success']:
+        result.pop('success', None)
+        return json.dumps(result)
+    else:
+        error_str = f"ERROR: failed to retrieve server info because: {result['error']}"
+        print(error_str, file=sys.stderr)
+        return error_str
+
+#--------------------------------------------------
+
+@mcp.tool()
+def retrieve_scheduled_task_list(ctx: Context) -> str:
+    """
+    Retrieve a list of the Emby server's scheduled maintenance tasks (eg library scans, cleanup jobs)
+    in JSON format. Requires the account used to log in to Emby.MCP to be an Emby administrator.
+
+    Args:
+        None
+
+    Returns:
+        List of dict: as JSON with keys:
+        name (str): the task's display name.
+        task_id (str): the unique identifier of the task, for use with tool start_scheduled_task.
+        state (str): the current state of the task, one of 'Idle', 'Running', 'Cancelling'.
+        category (str): the category the task is grouped under.
+        description (str): a short description of what the task does.
+        progress_percentage (float): the current progress of a running task, or None if idle.
+        is_hidden (bool): True if the task is normally hidden from the Emby admin UI.
+    """
+
+    auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
+    e_api_client = auth_context['api_client']
+
+    result = get_scheduled_tasks(e_api_client)
+    if result['success']:
+        return json.dumps(result['tasks'])
+    else:
+        error_str = f"ERROR: failed to retrieve scheduled task list because: {result['error']}"
+        print(error_str, file=sys.stderr)
+        return error_str
+
+#--------------------------------------------------
+
+@write_tool
+def start_scheduled_task(ctx: Context, task_id: str) -> str:
+    """
+    Starts one of the Emby server's scheduled maintenance tasks immediately.
+    Requires the account used to log in to Emby.MCP to be an Emby administrator.
+
+    Args:
+        task_id (str): The ID of the task to run, obtained from tool retrieve_scheduled_task_list.
+
+    Returns:
+        Str: success messsage or error message.
+    """
+
+    auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
+    e_api_client = auth_context['api_client']
+
+    result = run_scheduled_task(e_api_client, task_id)
+    if result['success']:
+        return "Successfully started scheduled task."
+    else:
+        error_str = f"ERROR: failed to start scheduled task ID {task_id} because: {result['error']}"
+        print(error_str, file=sys.stderr)
+        return error_str
+
+#--------------------------------------------------
+
+@write_tool
+def scan_library(ctx: Context, library_id: Optional[str] = "") -> str:
+    """
+    Starts a scan for new files and a metadata refresh, either for a single library (matching the
+    per-library 'Scan Library' option in the Emby UI) or, if no library_id is given, for every
+    library on the server at once.
+
+    Args:
+        library_id (str, optional): The ID of a single library to scan, obtained from tool retrieve_library_list.
+                                     If omitted, all libraries on the server are scanned.
+
+    Returns:
+        Str: success messsage or error message.
+    """
+
+    auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
+    e_api_client = auth_context['api_client']
+
+    if library_id is not None and library_id != "":
+        # Scanning a single library is done by recursively refreshing its library folder item,
+        # which is exactly what the per-library 'Scan Library' button does in the Emby UI.
+        # Unlike a full server scan, this does not require Emby administrator rights.
+        result = refresh_item(e_api_client, library_id, recursive=True)
+    else:
+        # No library_id supplied, so scan every library on the server. Emby has no single
+        # endpoint parameter to select a subset of libraries for this whole-server scan.
+        result = refresh_library(e_api_client)
+
+    if result['success']:
+        return "Successfully started a library scan."
+    else:
+        error_str = f"ERROR: failed to start library scan because: {result['error']}"
+        print(error_str, file=sys.stderr)
+        return error_str
+
+#--------------------------------------------------
+
+@write_tool
+def refresh_item_metadata(ctx: Context, item_id: str, include_children: bool = True) -> str:
+    """
+    Refreshes the metadata of a single item on the Emby server, re-fetching details such as
+    artwork, cast and descriptions from configured metadata providers.
+
+    Args:
+        item_id (str): The ID of the item to refresh, obtained from tool search_for_item.
+        include_children (bool, optional): If the item is a folder (eg a series or collection), also refresh its children. Defaults to True.
+
+    Returns:
+        Str: success messsage or error message.
+    """
+
+    auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
+    e_api_client = auth_context['api_client']
+
+    result = refresh_item(e_api_client, item_id, recursive=include_children)
+    if result['success']:
+        return "Successfully started a metadata refresh for the item."
+    else:
+        error_str = f"ERROR: failed to refresh metadata for item ID {item_id} because: {result['error']}"
+        print(error_str, file=sys.stderr)
+        return error_str
+
 #==================================================
 # Main Entry Point and Script Execution
 # Only used if script run directly for startup checks or debugging.

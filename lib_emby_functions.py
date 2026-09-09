@@ -2035,3 +2035,187 @@ def update_item_rating(e_api_client: object, user_id: str, item_id: str, rating:
         }
 
 #--------------------------------------------------
+# Server & Library Maintenance Functions
+#-------------------------
+
+def get_server_info(e_api_client: object) ->dict:
+    """
+    Get information about the Emby server itself (version, platform, network addresses, pending restart state).
+
+    Args:
+        e_api_client (obj): The authenticated API client.
+
+    Returns:
+        dict: A dictionary with keys:
+        server_name (str): The name of the Emby server.
+        version (str): The Emby server software version.
+        server_id (str): The unique identifier of this Emby server.
+        operating_system (str): The operating system the server is running on.
+        local_address (str): The local network address of the server.
+        wan_address (str): The remote/WAN address of the server, if configured.
+        has_pending_restart (bool): True if the server has a pending restart.
+        is_shutting_down (bool): True if the server is currently shutting down.
+        has_update_available (bool): True if a server software update is available.
+        success (bool): True if the request was successful, False otherwise.
+        error (str): An error message if the request failed, otherwise None.
+    """
+    api_instance = emby_client.SystemServiceApi(e_api_client)
+    try:
+        api_response = api_instance.get_system_info()
+        return {
+            'success': True,
+            'server_name': api_response.server_name if api_response.server_name else "",
+            'version': api_response.version if api_response.version else "",
+            'server_id': api_response.id if api_response.id else "",
+            'operating_system': api_response.operating_system_display_name if api_response.operating_system_display_name else "",
+            'local_address': api_response.local_address if api_response.local_address else "",
+            'wan_address': api_response.wan_address if api_response.wan_address else "",
+            'has_pending_restart': api_response.has_pending_restart if api_response.has_pending_restart is not None else False,
+            'is_shutting_down': api_response.is_shutting_down if api_response.is_shutting_down is not None else False,
+            'has_update_available': api_response.has_update_available if api_response.has_update_available is not None else False
+        }
+
+    except ApiException as e:
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
+#--------------------------------------------------
+
+def get_scheduled_tasks(e_api_client: object) ->dict:
+    """
+    Get a list of the Emby server's scheduled maintenance tasks (eg library scans, cleanup jobs).
+    Requires the authenticated user to be an Emby administrator.
+
+    Args:
+        e_api_client (obj): The authenticated API client.
+
+    Returns:
+        dict: A dictionary with keys:
+        tasks (list of dict): A list of dictionaries containing task information:
+            name (str): the task's display name.
+            task_id (str): the unique identifier of the task, for use with run_scheduled_task().
+            state (str): the current state of the task, one of 'Idle', 'Running', 'Cancelling'.
+            category (str): the category the task is grouped under.
+            description (str): a short description of what the task does.
+            progress_percentage (float): the current progress of a running task, or None if idle.
+            is_hidden (bool): True if the task is normally hidden from the Emby admin UI.
+        success (bool): True if the request was successful, False otherwise.
+        error (str): An error message if the request failed, otherwise None.
+    """
+    api_instance = emby_client.ScheduledTaskServiceApi(e_api_client)
+    try:
+        api_response = api_instance.get_scheduledtasks()
+        filtered_items = [
+            {
+                'name': task.name if task.name else "",
+                'task_id': task.id if task.id else "",
+                'state': task.state if task.state else "",
+                'category': task.category if task.category else "",
+                'description': task.description if task.description else "",
+                'progress_percentage': task.current_progress_percentage,
+                'is_hidden': task.is_hidden if task.is_hidden is not None else False
+            }
+            for task in api_response
+        ] if api_response else []
+        return {
+            'success': True,
+            'tasks': filtered_items
+        }
+
+    except ApiException as e:
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
+#--------------------------------------------------
+
+def run_scheduled_task(e_api_client: object, task_id: str) ->dict:
+    """
+    Starts one of the Emby server's scheduled maintenance tasks immediately.
+    Requires the authenticated user to be an Emby administrator.
+
+    Args:
+        e_api_client (obj): The authenticated API client.
+        task_id (str): The ID of the task to run, obtained from get_scheduled_tasks().
+
+    Returns:
+        dict: A dictionary with keys:
+        success (bool): True if the request was successful, False otherwise.
+        error (str): An error message if the request failed, otherwise None.
+    """
+    api_instance = emby_client.ScheduledTaskServiceApi(e_api_client)
+    try:
+        api_instance.post_scheduledtasks_running_by_id(task_id)
+        return {
+            'success': True
+        }
+
+    except ApiException as e:
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
+#--------------------------------------------------
+
+def refresh_library(e_api_client: object) ->dict:
+    """
+    Starts a scan of all Emby libraries, finding new files and refreshing metadata.
+    This specific endpoint always scans every library on the server; to scan a single library,
+    recursively refresh that library's folder item instead (see refresh_item()).
+    Requires the authenticated user to be an Emby administrator.
+
+    Args:
+        e_api_client (obj): The authenticated API client.
+
+    Returns:
+        dict: A dictionary with keys:
+        success (bool): True if the request was successful, False otherwise.
+        error (str): An error message if the request failed, otherwise None.
+    """
+    api_instance = emby_client.LibraryServiceApi(e_api_client)
+    try:
+        api_instance.post_library_refresh()
+        return {
+            'success': True
+        }
+
+    except ApiException as e:
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
+#--------------------------------------------------
+
+def refresh_item(e_api_client: object, item_id: str, recursive: bool = True) ->dict:
+    """
+    Refreshes the metadata (and, for folders, optionally its children) of a single item on the Emby server.
+
+    Args:
+        e_api_client (obj): The authenticated API client.
+        item_id (str): The ID of the item to refresh.
+        recursive (bool, optional): If the item is a folder, also refresh its children. Defaults to True.
+
+    Returns:
+        dict: A dictionary with keys:
+        success (bool): True if the request was successful, False otherwise.
+        error (str): An error message if the request failed, otherwise None.
+    """
+    api_instance = emby_client.ItemRefreshServiceApi(e_api_client)
+    try:
+        api_instance.post_items_by_id_refresh(item_id, recursive=recursive)
+        return {
+            'success': True
+        }
+
+    except ApiException as e:
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
+#--------------------------------------------------

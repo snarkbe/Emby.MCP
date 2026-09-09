@@ -13,6 +13,7 @@ MCP server that connects an Emby media server to any MCP-compatible AI client (C
 - List and manage collections (create, add/remove items, delete)
 - Mark items as favorite/watched and set a personal like/dislike rating
 - Control media players (play, pause, seek, queue)
+- Server & library maintenance: server info, scheduled tasks, library scan, item metadata refresh
 - Read-only mode: disable all write operations via a single env var
 - Chunked search results to stay within LLM context limits
 
@@ -58,6 +59,8 @@ LLM_MAX_ITEMS   = 100    # Max items per search chunk (0 = no limit). Default: 1
 ```
 
 > Tip: create a dedicated Emby user for Emby.MCP to limit its access. The username is still required to resolve which user_id the tools act as.
+
+> Note: `retrieve_scheduled_task_list` and `start_scheduled_task` require that user to be an Emby administrator, as does `scan_library` when scanning every library at once (no `library_id` given). Scanning a single library (`scan_library` with a `library_id`) does not require admin rights. Without the required rights, these tools return an error instead of failing silently.
 
 ### Verify the setup
 
@@ -174,6 +177,9 @@ Set `EMBY_READONLY = True` in `.env` to prevent the LLM from modifying anything.
 | `remove_items_from_collection` | Removes items from a collection |
 | `delete_collection` | Deletes a collection |
 | `control_media_player` | Sends commands to a player |
+| `start_scheduled_task` | Starts an Emby scheduled maintenance task |
+| `scan_library` | Starts a scan of one library, or all libraries |
+| `refresh_item_metadata` | Refreshes metadata for an item |
 
 ## License
 

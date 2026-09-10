@@ -139,6 +139,47 @@ Add to your `mcp.json` (see [VS Code docs](https://code.visualstudio.com/docs/co
 }
 ```
 
+## Available Tools
+
+| Category | Tool | Description | Available in read-only mode |
+|---|---|---|---|
+| Users | `retrieve_user_list` | Lists Emby users and their user IDs | Yes |
+| Library | `retrieve_library_list` | Lists libraries on the Emby server | Yes |
+| Library | `select_library` | Selects the active library for subsequent tools | Yes |
+| Library | `retrieve_current_library` | Shows the currently selected library | Yes |
+| Genre | `retrieve_genre_list` | Lists genres available in the current library | Yes |
+| Item search | `search_for_item` | Searches media items by title/album, artist, genre, year, lyrics | Yes |
+| Item search | `retrieve_next_search_chunk` | Retrieves the next chunk of search results | Yes |
+| Item state | `set_item_favorite` | Marks/unmarks an item as a favorite | No |
+| Item state | `set_item_watched` | Marks an item as watched/unwatched | No |
+| Item state | `rate_item` | Sets/clears your like/dislike rating for an item | No |
+| Playlist | `create_playlist` | Creates a playlist | No |
+| Playlist | `modify_playlist_name` | Renames / redescribes a playlist | No |
+| Playlist | `retrieve_playlist_list` | Lists playlists | Yes |
+| Playlist | `retrieve_playlist_items` | Lists items on a playlist | Yes |
+| Playlist | `add_items_to_playlist` | Adds items to a playlist | No |
+| Playlist | `remove_items_from_playlist` | Removes items from a playlist | No |
+| Playlist | `reorder_items_on_playlist` | Moves an item within a playlist | No |
+| Playlist | `share_playlist_public` | Shares a playlist with all users | No |
+| Playlist | `share_playlist_user_access` | Grants per-user playlist access | No |
+| Playlist | `stop_sharing_playlist` | Stops sharing a playlist | No |
+| Collection | `retrieve_collection_list` | Lists collections ('BoxSets') | Yes |
+| Collection | `retrieve_collection_items` | Lists items directly in a collection | Yes |
+| Collection | `create_collection` | Creates a collection | No |
+| Collection | `add_items_to_collection` | Adds items to a collection | No |
+| Collection | `remove_items_from_collection` | Removes items from a collection | No |
+| Collection | `delete_collection` | Deletes a collection | No |
+| Player | `retrieve_player_list` | Lists media player sessions | Yes |
+| Player | `retrieve_player_queue` | Lists a player's play queue | Yes |
+| Player | `control_media_player` | Sends commands (play, pause, seek, ...) to a player | No |
+| Server & maintenance | `retrieve_server_info` | Shows Emby server info (version, OS, network addresses) | Yes |
+| Server & maintenance | `retrieve_scheduled_task_list` | Lists Emby's scheduled maintenance tasks | Yes |
+| Server & maintenance | `start_scheduled_task` | Starts a scheduled maintenance task immediately | No |
+| Server & maintenance | `scan_library` | Starts a scan of one library, or all libraries | No |
+| Server & maintenance | `refresh_item_metadata` | Refreshes metadata for a single item | No |
+
+"Available in read-only mode" tools are always exposed to the MCP client; the rest are hidden when `EMBY_READONLY = True` (see below).
+
 ## Usage
 
 Start a conversation by mentioning Emby to hint which tools to use:
@@ -157,29 +198,7 @@ Tips:
 
 ## Read-only Mode
 
-Set `EMBY_READONLY = True` in `.env` to prevent the LLM from modifying anything. The following tools are hidden from the MCP client in this mode:
-
-| Tool | Action |
-|---|---|
-| `set_item_favorite` | Marks/unmarks an item as a favorite |
-| `set_item_watched` | Marks an item as watched/unwatched |
-| `rate_item` | Sets/clears your like/dislike rating for an item |
-| `create_playlist` | Creates a playlist |
-| `modify_playlist_name` | Renames / redescribes a playlist |
-| `add_items_to_playlist` | Adds items to a playlist |
-| `remove_items_from_playlist` | Removes items from a playlist |
-| `reorder_items_on_playlist` | Moves an item within a playlist |
-| `share_playlist_public` | Shares a playlist with all users |
-| `share_playlist_user_access` | Grants per-user playlist access |
-| `stop_sharing_playlist` | Stops sharing a playlist |
-| `create_collection` | Creates a collection |
-| `add_items_to_collection` | Adds items to a collection |
-| `remove_items_from_collection` | Removes items from a collection |
-| `delete_collection` | Deletes a collection |
-| `control_media_player` | Sends commands to a player |
-| `start_scheduled_task` | Starts an Emby scheduled maintenance task |
-| `scan_library` | Starts a scan of one library, or all libraries |
-| `refresh_item_metadata` | Refreshes metadata for an item |
+Set `EMBY_READONLY = True` in `.env` to prevent the LLM from modifying anything. Every tool marked "No" in the "Available in read-only mode" column of the [Available Tools](#available-tools) table above is then hidden from the MCP client — this covers all playlist, collection, item-state (favorite/watched/rating), player-control and library-maintenance write tools.
 
 ## License
 

@@ -143,12 +143,12 @@ async def app_lifespan(server: MCPServer) ->AsyncIterator[dict]:
     if auth_context['success']:
         # Store other default context data; the API client is already in auth_context.
         auth_context['available_libraries'] = []
-        auth_context['current_library'] = {}
+        auth_context['current_library'] = None
         auth_context['max_chunk_size'] = max_chunk_size
         auth_context['search_item_chunking'] = {}
         print(f"Logon to media server was successful. \n\n{LICENSE_NOTICE}", file=sys.stderr)
         if READONLY_MODE:
-            print("Read-only mode is enabled. Playlist and player control tools are not available.", file=sys.stderr)
+            print("Read-only mode is enabled. Playlist, collection, favorite/watched/rating, player control and library maintenance tools are not available.", file=sys.stderr)
     else:
         print(f"Fatal ERROR: login to media server failed: {auth_context['error']}", file=sys.stderr)
         sys.exit(1)
@@ -208,26 +208,42 @@ def retrieve_user_list(ctx: Context) -> str:
 @mcp.tool()
 def retrieve_library_list(ctx: Context) -> str:
     """
-    Retrieve a list of libraries from the Emby media server in JSON format.
+    Retrieve a list of libraries from the Emby media server in JSON format, including the number
+    of top-level items (eg movies, or series for a TV library) in each.
 
     Args:
         None
-    
+
     Returns:
         List of Dict: as JSON with keys:
         name (str): library name
         id (str): library unique identifier
-        type (str): library media type   
+        type (str): library media type
+        item_count (int): the number of top-level items in the library (eg movies, or series for
+                           a TV library; episodes and other nested items are not counted). None if
+                           the count could not be retrieved for this library.
     """
 
     auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
     e_api_client = auth_context['api_client']
+    user_id = auth_context['user_id']
 
     library_list = get_library_list(e_api_client)
     if library_list['success']:
         available_libraries = library_list['items']
-        auth_context['available_libraries'] = available_libraries # Save list in context  
-        return json.dumps(available_libraries)
+        auth_context['available_libraries'] = available_libraries # Save list in context
+
+        # Enrich with a per-library item count. Each count is its own cheap, count-only Emby
+        # query (see get_library_item_count), so the whole list is still returned via this one
+        # tool call even though it costs one extra request per library behind the scenes.
+        libraries_with_counts = []
+        for library in available_libraries:
+            count_result = get_library_item_count(e_api_client, user_id, library['id'])
+            enriched_library = dict(library)
+            enriched_library['item_count'] = count_result['item_count'] if count_result['success'] else None
+            libraries_with_counts.append(enriched_library)
+
+        return json.dumps(libraries_with_counts)
     else:
         auth_context['available_libraries'] = [] # Clear saved context
         error_str = f"ERROR: failed to retrieve library list because: {library_list['error']}"
@@ -332,25 +348,30 @@ def retrieve_genre_list(ctx: Context) -> str:
 @mcp.tool()
 def search_for_item(ctx: Context,
                     title_or_album: Optional[str] = "",
-                    artist_name: Optional[str] = "", 
-                    genre_name: Optional[str] = "", 
+                    artist_name: Optional[str] = "",
+                    person_name: Optional[str] = "",
+                    genre_name: Optional[str] = "",
                     broadcast_release_years: Optional[str] = "",
                     lyrics_or_description: Optional[str] = ""
                     ) -> str:
     """
-    Search for media items on the Emby server by item title or album name, artist name, genre name and release / broadcast years. 
-    Parameters "and" together to narrow the results. Genre should be a name returned by tool retrieve_genre_list. 
-    Returns search results as a JSON format, including control data 'total_number_of_items', 'chunk_size' and 'more_chunks_available' 
+    Search for media items on the Emby server by item title or album name, artist name, person name, genre name
+    and release / broadcast years.
+    Parameters "and" together to narrow the results. Genre should be a name returned by tool retrieve_genre_list.
+    Returns search results as a JSON format, including control data 'total_number_of_items', 'chunk_size' and 'more_chunks_available'
     which indicate whether further search results are available via tool retrieve_next_search_chunk.
     A human may use any returned JSON field to identify an item. You must only supply the corresponding 'item_id' field when using other tools.
 
     Args:
-        title_or_album (str, optional): name of item, track, episode or album. 
-        artist_name (str, optional): name of artist
+        title_or_album (str, optional): name of item, track, episode or album.
+        artist_name (str, optional): name of a music artist (album artist or performer). Only matches music items;
+            use person_name for actors, directors and other cast/crew on movies and TV shows.
+        person_name (str, optional): name of a person associated with the item, such as an actor, director or
+            writer (movies and TV shows). Does not match music items.
         genre_name (str, optional): genre that items are tagged with
         broadcast_release_years (str, optional): The item release year(s). Allows multiple years, comma separated.
-        lyrics_or_description (str, optional): a phrase to find in the lyrics or long description for the item 
-    
+        lyrics_or_description (str, optional): a phrase to find in the lyrics or long description for the item
+
     Returns:
         Dict: as JSON with keys:
         search_id (str): The unique ID of the current search
@@ -392,6 +413,8 @@ def search_for_item(ctx: Context,
             kwargs['search_term'] = title_or_album
         if  artist_name is not None and artist_name != "":
             kwargs['artist'] = artist_name
+        if  person_name is not None and person_name != "":
+            kwargs['person'] = person_name
         if  genre_name is not None and genre_name != "":
             kwargs['genre'] = genre_name
         if  broadcast_release_years is not None and broadcast_release_years != "":
@@ -560,6 +583,89 @@ def retrieve_next_search_chunk(ctx: Context) -> str:
 
     # The context storage was empty so return an empty dictionary
     return json.dumps({})
+
+#--------------------------------------------------
+# Item Favorites & Watched-State Tools
+#-------------------------
+
+@write_tool
+def set_item_favorite(ctx: Context, item_id: str, is_favorite: bool = True) -> str:
+    """
+    Marks or unmarks a media item as one of your favorites on the Emby server.
+
+    Args:
+        item_id (str): The ID of the item obtained from tool search_for_item.
+        is_favorite (bool, optional): True to mark the item as a favorite, False to remove it. Defaults to True.
+
+    Returns:
+        Str: success messsage or error message.
+    """
+
+    auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
+    e_api_client = auth_context['api_client']
+    user_id = auth_context['user_id']
+
+    result = update_item_favorite(e_api_client, user_id, item_id, is_favorite)
+    if result['success']:
+        return f"Successfully {'marked' if is_favorite else 'unmarked'} item as favorite."
+    else:
+        error_str = f"ERROR: failed to update favorite status for item ID {item_id} because: {result['error']}"
+        print(error_str, file=sys.stderr)
+        return error_str
+
+#--------------------------------------------------
+
+@write_tool
+def set_item_watched(ctx: Context, item_id: str, is_watched: bool = True) -> str:
+    """
+    Marks a media item as watched or unwatched for you on the Emby server.
+
+    Args:
+        item_id (str): The ID of the item obtained from tool search_for_item.
+        is_watched (bool, optional): True to mark the item as watched, False to mark it as unwatched. Defaults to True.
+
+    Returns:
+        Str: success messsage or error message.
+    """
+
+    auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
+    e_api_client = auth_context['api_client']
+    user_id = auth_context['user_id']
+
+    result = update_item_played(e_api_client, user_id, item_id, is_watched)
+    if result['success']:
+        return f"Successfully marked item as {'watched' if is_watched else 'unwatched'}."
+    else:
+        error_str = f"ERROR: failed to update watched status for item ID {item_id} because: {result['error']}"
+        print(error_str, file=sys.stderr)
+        return error_str
+
+#--------------------------------------------------
+
+@write_tool
+def rate_item(ctx: Context, item_id: str, rating: str) -> str:
+    """
+    Sets or clears your personal like/dislike rating for a media item on the Emby server.
+
+    Args:
+        item_id (str): The ID of the item obtained from tool search_for_item.
+        rating (str): One of 'Like', 'Dislike', or 'None' to clear any existing rating.
+
+    Returns:
+        Str: success messsage or error message.
+    """
+
+    auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
+    e_api_client = auth_context['api_client']
+    user_id = auth_context['user_id']
+
+    result = update_item_rating(e_api_client, user_id, item_id, rating)
+    if result['success']:
+        return "Successfully updated item rating."
+    else:
+        error_str = f"ERROR: failed to update rating for item ID {item_id} because: {result['error']}"
+        print(error_str, file=sys.stderr)
+        return error_str
 
 #--------------------------------------------------
 # Playlist Tools
@@ -937,6 +1043,190 @@ def stop_sharing_playlist(ctx: Context, playlist_id: str) -> str:
         return error_str
 
 #--------------------------------------------------
+# Collection Tools
+#-------------------------
+
+@mcp.tool()
+def retrieve_collection_list(ctx: Context, collection_id: Optional[str] = "") -> str:
+    """
+    Retrieve a list of collections (curated groups of movies/shows, called 'BoxSets' by Emby) on the
+    Emby media server in JSON format. If you supply an optional collection_id then only information
+    about this collection will be returned.
+
+    Args:
+        collection_id (str, optional): The 'collection_id' of a specific collection to filter to (eg from tool
+                                        create_collection, or from a previous call to this tool), or an empty
+                                        string to list all collections.
+
+    Returns:
+        List of dict: as JSON with keys:
+        name (str): collection name
+        overview (str): short description
+        genres (list of str): the collection's own genre tags (not aggregated from its contents)
+        date_created (str): date the collection was created
+        item_count (int): the number of items in the collection
+        collection_id (str): the unique identifier for the collection
+    """
+
+    auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
+    e_api_client = auth_context['api_client']
+    user_id = auth_context['user_id']
+
+    result = get_collections(e_api_client, user_id, collection_id)
+    if result['success']:
+        return json.dumps(result['collections'])
+    else:
+        error_str = f"ERROR: failed to retrieve list of collections because: {result['error']}"
+        print(error_str, file=sys.stderr)
+        return error_str
+
+#--------------------------------------------------
+
+@mcp.tool()
+def retrieve_collection_items(ctx: Context, collection_id: str) -> str:
+    """
+    Retrieve the list of media items directly in a collection from the Emby server in JSON format.
+    Returns only the collection's direct children (eg the Movies or Series added to it), not their
+    own nested contents such as episodes.
+
+    Args:
+        collection_id (str): The ID of the collection to list, obtained from tool retrieve_collection_list.
+
+    Returns:
+        List of dict: as JSON with keys:
+        title (str): the title of the item.
+        item_type (str): the Emby item type, eg 'Movie', 'Series', 'Audio'.
+        overview (str): the short description of the item.
+        genres (list of str): the genres tagged to the item
+        production_year (int): the year of release
+        premiere_date (str, ISO format): the date of first release / broadcast of the item.
+        run_time (str): the run time of the item as hh:mm:ss, if applicable.
+        item_id (str): the unique identifier of the item within this Emby server.
+    """
+
+    auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
+    e_api_client = auth_context['api_client']
+    user_id = auth_context['user_id']
+
+    result = get_collection_items(e_api_client, user_id, collection_id)
+    if result['success']:
+        return json.dumps(result['items'])
+    else:
+        error_str = f"ERROR: failed to retrieve list of items for collection ID {collection_id} because: {result['error']}"
+        print(error_str, file=sys.stderr)
+        return error_str
+
+#--------------------------------------------------
+
+@write_tool
+def create_collection(ctx: Context, collection_name: str, item_ids: Optional[str] = "") -> str:
+    """
+    Create a new collection on the Emby server with the supplied name and optional items to seed it with.
+    Unlike playlists, Emby does not enforce unique collection names.
+
+    Args:
+        collection_name (str): The name of the collection to create
+        item_ids (str, optional): The ID of one or more items obtained from tool search_for_item to add to the collection as a comma separated list
+
+    Returns:
+        Dict: as JSON with keys:
+        collection_id (str): the unique identifier of the collection within this Emby server.
+        success (bool): True if the request was successful, False if an error occured.
+        error (str): An error message if the request failed, otherwise None.
+    """
+
+    auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
+    e_api_client = auth_context['api_client']
+
+    result = new_collection(e_api_client, collection_name, item_ids)
+    if result['success']:
+        return json.dumps(result)
+    else:
+        error_str = f"ERROR: failed to create collection because: {result['error']}"
+        print(error_str, file=sys.stderr)
+        return error_str
+
+#--------------------------------------------------
+
+@write_tool
+def add_items_to_collection(ctx: Context, collection_id: str, item_ids: str) -> str:
+    """
+    Adds one or more items to an existing collection on the Emby server.
+
+    Args:
+        collection_id (str): The ID of the collection to add to, obtained from tool retrieve_collection_list.
+        item_ids (str): The ID of one or more items obtained from tool search_for_item as a comma separated list to add to the collection.
+
+    Returns:
+        Str: success messsage or error message.
+    """
+
+    auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
+    e_api_client = auth_context['api_client']
+
+    result = add_collection_items(e_api_client, collection_id, item_ids)
+    if result['success']:
+        return "Successfully added items to collection."
+    else:
+        error_str = f"ERROR: failed to add items to collection ID {collection_id} because: {result['error']}"
+        print(error_str, file=sys.stderr)
+        return error_str
+
+#--------------------------------------------------
+
+@write_tool
+def remove_items_from_collection(ctx: Context, collection_id: str, item_ids: str) -> str:
+    """
+    Removes one or more items from an existing collection on the Emby server. This does not delete
+    the items themselves, only their membership of the collection.
+
+    Args:
+        collection_id (str): The ID of the collection to remove from, obtained from tool retrieve_collection_list.
+        item_ids (str): The ID of one or more items obtained from tool retrieve_collection_items as a comma separated list to remove from the collection.
+
+    Returns:
+        Str: success messsage or error message.
+    """
+
+    auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
+    e_api_client = auth_context['api_client']
+
+    result = remove_collection_items(e_api_client, collection_id, item_ids)
+    if result['success']:
+        return "Successfully removed items from collection."
+    else:
+        error_str = f"ERROR: failed to remove items from collection ID {collection_id} because: {result['error']}"
+        print(error_str, file=sys.stderr)
+        return error_str
+
+#--------------------------------------------------
+
+@write_tool
+def delete_collection(ctx: Context, collection_id: str) -> str:
+    """
+    Deletes a collection from the Emby server. This only removes the collection grouping itself;
+    the underlying media items and their files are not affected or deleted.
+
+    Args:
+        collection_id (str): The ID of the collection to delete, obtained from tool retrieve_collection_list.
+
+    Returns:
+        Str: success messsage or error message.
+    """
+
+    auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
+    e_api_client = auth_context['api_client']
+    user_id = auth_context['user_id']
+
+    result = remove_collection(e_api_client, user_id, collection_id)
+    if result['success']:
+        return "Successfully deleted collection."
+    else:
+        error_str = f"ERROR: failed to delete collection ID {collection_id} because: {result['error']}"
+        print(error_str, file=sys.stderr)
+        return error_str
+
+#--------------------------------------------------
 # Player Tools
 #-------------------------
 
@@ -1069,6 +1359,166 @@ def control_media_player(ctx: Context, session_id: str, command: str, item_ids: 
         return "ERROR: no session_id was supplied. Obtain session_id from tool retrieve_player_list"
     else:
         return "ERROR: no command was supplied. Valid commands are: 'PlayNow', 'Stop', 'Pause', 'Unpause', 'NextTrack', 'PreviousTrack', 'Seek', 'Rewind', 'FastForward'."
+
+#--------------------------------------------------
+# Server & Library Maintenance Tools
+#-------------------------
+
+@mcp.tool()
+def retrieve_server_info(ctx: Context) -> str:
+    """
+    Retrieve information about the Emby server itself in JSON format.
+
+    Args:
+        None
+
+    Returns:
+        Dict: as JSON with keys:
+        server_name (str): The name of the Emby server.
+        version (str): The Emby server software version.
+        server_id (str): The unique identifier of this Emby server.
+        operating_system (str): The operating system the server is running on.
+        local_address (str): The local network address of the server.
+        wan_address (str): The remote/WAN address of the server, if configured.
+        has_pending_restart (bool): True if the server has a pending restart.
+        is_shutting_down (bool): True if the server is currently shutting down.
+        has_update_available (bool): True if a server software update is available.
+    """
+
+    auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
+    e_api_client = auth_context['api_client']
+
+    result = get_server_info(e_api_client)
+    if result['success']:
+        result.pop('success', None)
+        return json.dumps(result)
+    else:
+        error_str = f"ERROR: failed to retrieve server info because: {result['error']}"
+        print(error_str, file=sys.stderr)
+        return error_str
+
+#--------------------------------------------------
+
+@mcp.tool()
+def retrieve_scheduled_task_list(ctx: Context) -> str:
+    """
+    Retrieve a list of the Emby server's scheduled maintenance tasks (eg library scans, cleanup jobs)
+    in JSON format. Requires the account used to log in to Emby.MCP to be an Emby administrator.
+
+    Args:
+        None
+
+    Returns:
+        List of dict: as JSON with keys:
+        name (str): the task's display name.
+        task_id (str): the unique identifier of the task, for use with tool start_scheduled_task.
+        state (str): the current state of the task, one of 'Idle', 'Running', 'Cancelling'.
+        category (str): the category the task is grouped under.
+        description (str): a short description of what the task does.
+        progress_percentage (float): the current progress of a running task, or None if idle.
+        is_hidden (bool): True if the task is normally hidden from the Emby admin UI.
+    """
+
+    auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
+    e_api_client = auth_context['api_client']
+
+    result = get_scheduled_tasks(e_api_client)
+    if result['success']:
+        return json.dumps(result['tasks'])
+    else:
+        error_str = f"ERROR: failed to retrieve scheduled task list because: {result['error']}"
+        print(error_str, file=sys.stderr)
+        return error_str
+
+#--------------------------------------------------
+
+@write_tool
+def start_scheduled_task(ctx: Context, task_id: str) -> str:
+    """
+    Starts one of the Emby server's scheduled maintenance tasks immediately.
+    Requires the account used to log in to Emby.MCP to be an Emby administrator.
+
+    Args:
+        task_id (str): The ID of the task to run, obtained from tool retrieve_scheduled_task_list.
+
+    Returns:
+        Str: success messsage or error message.
+    """
+
+    auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
+    e_api_client = auth_context['api_client']
+
+    result = run_scheduled_task(e_api_client, task_id)
+    if result['success']:
+        return "Successfully started scheduled task."
+    else:
+        error_str = f"ERROR: failed to start scheduled task ID {task_id} because: {result['error']}"
+        print(error_str, file=sys.stderr)
+        return error_str
+
+#--------------------------------------------------
+
+@write_tool
+def scan_library(ctx: Context, library_id: Optional[str] = "") -> str:
+    """
+    Starts a scan for new files and a metadata refresh, either for a single library (matching the
+    per-library 'Scan Library' option in the Emby UI) or, if no library_id is given, for every
+    library on the server at once.
+
+    Args:
+        library_id (str, optional): The ID of a single library to scan, obtained from tool retrieve_library_list.
+                                     If omitted, all libraries on the server are scanned.
+
+    Returns:
+        Str: success messsage or error message.
+    """
+
+    auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
+    e_api_client = auth_context['api_client']
+
+    if library_id is not None and library_id != "":
+        # Scanning a single library is done by recursively refreshing its library folder item,
+        # which is exactly what the per-library 'Scan Library' button does in the Emby UI.
+        # Unlike a full server scan, this does not require Emby administrator rights.
+        result = refresh_item(e_api_client, library_id, recursive=True)
+    else:
+        # No library_id supplied, so scan every library on the server. Emby has no single
+        # endpoint parameter to select a subset of libraries for this whole-server scan.
+        result = refresh_library(e_api_client)
+
+    if result['success']:
+        return "Successfully started a library scan."
+    else:
+        error_str = f"ERROR: failed to start library scan because: {result['error']}"
+        print(error_str, file=sys.stderr)
+        return error_str
+
+#--------------------------------------------------
+
+@write_tool
+def refresh_item_metadata(ctx: Context, item_id: str, include_children: bool = True) -> str:
+    """
+    Refreshes the metadata of a single item on the Emby server, re-fetching details such as
+    artwork, cast and descriptions from configured metadata providers.
+
+    Args:
+        item_id (str): The ID of the item to refresh, obtained from tool search_for_item.
+        include_children (bool, optional): If the item is a folder (eg a series or collection), also refresh its children. Defaults to True.
+
+    Returns:
+        Str: success messsage or error message.
+    """
+
+    auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
+    e_api_client = auth_context['api_client']
+
+    result = refresh_item(e_api_client, item_id, recursive=include_children)
+    if result['success']:
+        return "Successfully started a metadata refresh for the item."
+    else:
+        error_str = f"ERROR: failed to refresh metadata for item ID {item_id} because: {result['error']}"
+        print(error_str, file=sys.stderr)
+        return error_str
 
 #==================================================
 # Main Entry Point and Script Execution

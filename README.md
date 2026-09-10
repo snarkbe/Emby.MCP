@@ -8,9 +8,12 @@ MCP server that connects an Emby media server to any MCP-compatible AI client (C
 
 ## Features
 
-- Browse media libraries, genres, and items (search by title, artist, album, year, lyrics)
+- Browse media libraries, genres, and items (search by title, artist, person/cast, album, year, lyrics)
 - List and manage playlists (create, edit, reorder, share)
+- List and manage collections (create, add/remove items, delete)
+- Mark items as favorite/watched and set a personal like/dislike rating
 - Control media players (play, pause, seek, queue)
+- Server & library maintenance: server info, scheduled tasks, library scan, item metadata refresh
 - Read-only mode: disable all write operations via a single env var
 - Chunked search results to stay within LLM context limits
 
@@ -56,6 +59,8 @@ LLM_MAX_ITEMS   = 100    # Max items per search chunk (0 = no limit). Default: 1
 ```
 
 > Tip: create a dedicated Emby user for Emby.MCP to limit its access. The username is still required to resolve which user_id the tools act as.
+
+> Note: a few tools require that user to be an Emby administrator — see the "Requires Emby admin" column in [Available Tools](#available-tools) below. Without the required rights, they return an error instead of failing silently.
 
 ### Verify the setup
 
@@ -134,6 +139,47 @@ Add to your `mcp.json` (see [VS Code docs](https://code.visualstudio.com/docs/co
 }
 ```
 
+## Available Tools
+
+| Category | Tool | Description | Available in read-only mode | Requires Emby admin |
+|---|---|---|---|---|
+| Users | `retrieve_user_list` | Lists Emby users and their user IDs | Yes | No |
+| Library | `retrieve_library_list` | Lists libraries on the Emby server, with an item count for each | Yes | No |
+| Library | `select_library` | Selects the active library for subsequent tools | Yes | No |
+| Library | `retrieve_current_library` | Shows the currently selected library | Yes | No |
+| Genre | `retrieve_genre_list` | Lists genres available in the current library | Yes | No |
+| Item search | `search_for_item` | Searches media items by title/album, artist, person/cast, genre, year, lyrics | Yes | No |
+| Item search | `retrieve_next_search_chunk` | Retrieves the next chunk of search results | Yes | No |
+| Item state | `set_item_favorite` | Marks/unmarks an item as a favorite | No | No |
+| Item state | `set_item_watched` | Marks an item as watched/unwatched | No | No |
+| Item state | `rate_item` | Sets/clears your like/dislike rating for an item | No | No |
+| Playlist | `create_playlist` | Creates a playlist | No | No |
+| Playlist | `modify_playlist_name` | Renames / redescribes a playlist | No | No |
+| Playlist | `retrieve_playlist_list` | Lists playlists | Yes | No |
+| Playlist | `retrieve_playlist_items` | Lists items on a playlist | Yes | No |
+| Playlist | `add_items_to_playlist` | Adds items to a playlist | No | No |
+| Playlist | `remove_items_from_playlist` | Removes items from a playlist | No | No |
+| Playlist | `reorder_items_on_playlist` | Moves an item within a playlist | No | No |
+| Playlist | `share_playlist_public` | Shares a playlist with all users | No | No |
+| Playlist | `share_playlist_user_access` | Grants per-user playlist access | No | No |
+| Playlist | `stop_sharing_playlist` | Stops sharing a playlist | No | No |
+| Collection | `retrieve_collection_list` | Lists collections ('BoxSets') | Yes | No |
+| Collection | `retrieve_collection_items` | Lists items directly in a collection | Yes | No |
+| Collection | `create_collection` | Creates a collection | No | No |
+| Collection | `add_items_to_collection` | Adds items to a collection | No | No |
+| Collection | `remove_items_from_collection` | Removes items from a collection | No | No |
+| Collection | `delete_collection` | Deletes a collection | No | No |
+| Player | `retrieve_player_list` | Lists media player sessions | Yes | No |
+| Player | `retrieve_player_queue` | Lists a player's play queue | Yes | No |
+| Player | `control_media_player` | Sends commands (play, pause, seek, ...) to a player | No | No |
+| Server & maintenance | `retrieve_server_info` | Shows Emby server info (version, OS, network addresses) | Yes | No |
+| Server & maintenance | `retrieve_scheduled_task_list` | Lists Emby's scheduled maintenance tasks | Yes | **Yes** |
+| Server & maintenance | `start_scheduled_task` | Starts a scheduled maintenance task immediately | No | **Yes** |
+| Server & maintenance | `scan_library` | Starts a scan of one library, or all libraries | No | Only scanning *all* libraries (no `library_id`) |
+| Server & maintenance | `refresh_item_metadata` | Refreshes metadata for a single item | No | No |
+
+"Available in read-only mode" tools are always exposed to the MCP client; the rest are hidden when `EMBY_READONLY = True` (see below). "Requires Emby admin" tools need the account behind `EMBY_API_KEY` to be an Emby administrator; without that, they return an error instead of failing silently.
+
 ## Usage
 
 Start a conversation by mentioning Emby to hint which tools to use:
@@ -152,19 +198,7 @@ Tips:
 
 ## Read-only Mode
 
-Set `EMBY_READONLY = True` in `.env` to prevent the LLM from modifying anything. The following tools are hidden from the MCP client in this mode:
-
-| Tool | Action |
-|---|---|
-| `create_playlist` | Creates a playlist |
-| `modify_playlist_name` | Renames / redescribes a playlist |
-| `add_items_to_playlist` | Adds items to a playlist |
-| `remove_items_from_playlist` | Removes items from a playlist |
-| `reorder_items_on_playlist` | Moves an item within a playlist |
-| `share_playlist_public` | Shares a playlist with all users |
-| `share_playlist_user_access` | Grants per-user playlist access |
-| `stop_sharing_playlist` | Stops sharing a playlist |
-| `control_media_player` | Sends commands to a player |
+Set `EMBY_READONLY = True` in `.env` to prevent the LLM from modifying anything. Every tool marked "No" in the "Available in read-only mode" column of the [Available Tools](#available-tools) table above is then hidden from the MCP client — this covers all playlist, collection, item-state (favorite/watched/rating), player-control and library-maintenance write tools.
 
 ## License
 

@@ -472,13 +472,20 @@ def get_items(e_api_client: object, user_id: str, library_id: str = "", **kwargs
     # Run query and process results
     api_instance = emby_client.ItemsServiceApi(e_api_client)
     extrafields='Genres,MediaSources,DateCreated,Overview,ProductionYear,PremiereDate,Path'
-    media_types = 'Audio,Video' # Only return these media types
+
+    # Combining Emby's MediaTypes filter with a Genres filter under Recursive=true crashes some
+    # Emby server versions with a 500 (SQLiteException), regardless of which media type(s) are
+    # requested. Omit MediaTypes whenever a genre filter is present to avoid that crash; the
+    # BoxSet items that can then slip into genre-filtered results (collections carry genre tags
+    # too) are filtered out below instead.
+    media_types_kwarg = {} if 'genres' in kwcooked else {'media_types': 'Audio,Video'}
 
     try:
-        api_response = api_instance.get_users_by_userid_items(user_id, parent_id=library_id, media_types=media_types, recursive=True, fields=extrafields, **kwcooked)
+        api_response = api_instance.get_users_by_userid_items(user_id, parent_id=library_id, recursive=True, fields=extrafields, **media_types_kwarg, **kwcooked)
         total_count = api_response.total_record_count
         if total_count > 0:
-            items_list = api_response.items
+            items_list = [item for item in api_response.items if item.type != 'BoxSet']
+            total_count = len(items_list)
             # Return only a subset of fields
             filtered_items = [
                 {

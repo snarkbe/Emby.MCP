@@ -208,26 +208,42 @@ def retrieve_user_list(ctx: Context) -> str:
 @mcp.tool()
 def retrieve_library_list(ctx: Context) -> str:
     """
-    Retrieve a list of libraries from the Emby media server in JSON format.
+    Retrieve a list of libraries from the Emby media server in JSON format, including the number
+    of top-level items (eg movies, or series for a TV library) in each.
 
     Args:
         None
-    
+
     Returns:
         List of Dict: as JSON with keys:
         name (str): library name
         id (str): library unique identifier
-        type (str): library media type   
+        type (str): library media type
+        item_count (int): the number of top-level items in the library (eg movies, or series for
+                           a TV library; episodes and other nested items are not counted). None if
+                           the count could not be retrieved for this library.
     """
 
     auth_context: dict = ctx.request_context.lifespan_context  # type: ignore[assignment]
     e_api_client = auth_context['api_client']
+    user_id = auth_context['user_id']
 
     library_list = get_library_list(e_api_client)
     if library_list['success']:
         available_libraries = library_list['items']
-        auth_context['available_libraries'] = available_libraries # Save list in context  
-        return json.dumps(available_libraries)
+        auth_context['available_libraries'] = available_libraries # Save list in context
+
+        # Enrich with a per-library item count. Each count is its own cheap, count-only Emby
+        # query (see get_library_item_count), so the whole list is still returned via this one
+        # tool call even though it costs one extra request per library behind the scenes.
+        libraries_with_counts = []
+        for library in available_libraries:
+            count_result = get_library_item_count(e_api_client, user_id, library['id'])
+            enriched_library = dict(library)
+            enriched_library['item_count'] = count_result['item_count'] if count_result['success'] else None
+            libraries_with_counts.append(enriched_library)
+
+        return json.dumps(libraries_with_counts)
     else:
         auth_context['available_libraries'] = [] # Clear saved context
         error_str = f"ERROR: failed to retrieve library list because: {library_list['error']}"

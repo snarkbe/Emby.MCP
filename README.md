@@ -144,7 +144,7 @@ Add to your `mcp.json` (see [VS Code docs](https://code.visualstudio.com/docs/co
 | Category | Tool | Description | Available in read-only mode | Requires Emby admin |
 |---|---|---|---|---|
 | Users | `retrieve_user_list` | Lists Emby users and their user IDs | Yes | No |
-| Library | `retrieve_library_list` | Lists libraries on the Emby server | Yes | No |
+| Library | `retrieve_library_list` | Lists libraries on the Emby server, with an item count for each | Yes | No |
 | Library | `select_library` | Selects the active library for subsequent tools | Yes | No |
 | Library | `retrieve_current_library` | Shows the currently selected library | Yes | No |
 | Genre | `retrieve_genre_list` | Lists genres available in the current library | Yes | No |

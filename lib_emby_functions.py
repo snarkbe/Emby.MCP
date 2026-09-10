@@ -276,6 +276,40 @@ def get_library_list(e_api_client: object) ->dict:
 
 #--------------------------------------------------
 
+def get_library_item_count(e_api_client: object, user_id: str, library_id: str) ->dict:
+    """
+    Get the number of top-level items directly in a library (eg the number of movies in a movie
+    library, or the number of series in a TV library - episodes and other nested items are not
+    counted) from the Emby server. This is a cheap, count-only query: Emby still reports the true
+    total even when no actual item data is requested, so no item data is fetched or returned here.
+
+    Args:
+        e_api_client (obj): The authenticated API client.
+        user_id (str): The ID of the user doing the query.
+        library_id (str): The ID of the library to count.
+
+    Returns:
+        dict: A dictionary with keys:
+        item_count (int): the number of top-level items in the library.
+        success (bool): True if the request was successful, False otherwise.
+        error (str): An error message if the request failed, otherwise None.
+    """
+    api_instance = emby_client.ItemsServiceApi(e_api_client)
+    try:
+        api_response = api_instance.get_users_by_userid_items(user_id, parent_id=library_id, recursive=False, limit=0)
+        return {
+            'success': True,
+            'item_count': api_response.total_record_count if api_response.total_record_count else 0
+        }
+
+    except ApiException as e:
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
+#--------------------------------------------------
+
 def set_current_library(available_libraries:list, name:str = "") ->dict:
     """
     Set the current library.

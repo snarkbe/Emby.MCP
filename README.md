@@ -8,7 +8,7 @@ MCP server that connects an Emby media server to any MCP-compatible AI client (C
 
 ## Features
 
-- Browse media libraries, genres, and items (search by title, artist, album, year, lyrics)
+- Browse media libraries, genres, and items (search by title, artist, person/cast, album, year, lyrics)
 - List and manage playlists (create, edit, reorder, share)
 - List and manage collections (create, add/remove items, delete)
 - Mark items as favorite/watched and set a personal like/dislike rating
@@ -148,7 +148,7 @@ Add to your `mcp.json` (see [VS Code docs](https://code.visualstudio.com/docs/co
 | Library | `select_library` | Selects the active library for subsequent tools | Yes | No |
 | Library | `retrieve_current_library` | Shows the currently selected library | Yes | No |
 | Genre | `retrieve_genre_list` | Lists genres available in the current library | Yes | No |
-| Item search | `search_for_item` | Searches media items by title/album, artist, genre, year, lyrics | Yes | No |
+| Item search | `search_for_item` | Searches media items by title/album, artist, person/cast, genre, year, lyrics | Yes | No |
 | Item search | `retrieve_next_search_chunk` | Retrieves the next chunk of search results | Yes | No |
 | Item state | `set_item_favorite` | Marks/unmarks an item as a favorite | No | No |
 | Item state | `set_item_watched` | Marks an item as watched/unwatched | No | No |

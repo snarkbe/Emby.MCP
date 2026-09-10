@@ -143,7 +143,7 @@ async def app_lifespan(server: MCPServer) ->AsyncIterator[dict]:
     if auth_context['success']:
         # Store other default context data; the API client is already in auth_context.
         auth_context['available_libraries'] = []
-        auth_context['current_library'] = {}
+        auth_context['current_library'] = None
         auth_context['max_chunk_size'] = max_chunk_size
         auth_context['search_item_chunking'] = {}
         print(f"Logon to media server was successful. \n\n{LICENSE_NOTICE}", file=sys.stderr)
@@ -348,25 +348,30 @@ def retrieve_genre_list(ctx: Context) -> str:
 @mcp.tool()
 def search_for_item(ctx: Context,
                     title_or_album: Optional[str] = "",
-                    artist_name: Optional[str] = "", 
-                    genre_name: Optional[str] = "", 
+                    artist_name: Optional[str] = "",
+                    person_name: Optional[str] = "",
+                    genre_name: Optional[str] = "",
                     broadcast_release_years: Optional[str] = "",
                     lyrics_or_description: Optional[str] = ""
                     ) -> str:
     """
-    Search for media items on the Emby server by item title or album name, artist name, genre name and release / broadcast years. 
-    Parameters "and" together to narrow the results. Genre should be a name returned by tool retrieve_genre_list. 
-    Returns search results as a JSON format, including control data 'total_number_of_items', 'chunk_size' and 'more_chunks_available' 
+    Search for media items on the Emby server by item title or album name, artist name, person name, genre name
+    and release / broadcast years.
+    Parameters "and" together to narrow the results. Genre should be a name returned by tool retrieve_genre_list.
+    Returns search results as a JSON format, including control data 'total_number_of_items', 'chunk_size' and 'more_chunks_available'
     which indicate whether further search results are available via tool retrieve_next_search_chunk.
     A human may use any returned JSON field to identify an item. You must only supply the corresponding 'item_id' field when using other tools.
 
     Args:
-        title_or_album (str, optional): name of item, track, episode or album. 
-        artist_name (str, optional): name of artist
+        title_or_album (str, optional): name of item, track, episode or album.
+        artist_name (str, optional): name of a music artist (album artist or performer). Only matches music items;
+            use person_name for actors, directors and other cast/crew on movies and TV shows.
+        person_name (str, optional): name of a person associated with the item, such as an actor, director or
+            writer (movies and TV shows). Does not match music items.
         genre_name (str, optional): genre that items are tagged with
         broadcast_release_years (str, optional): The item release year(s). Allows multiple years, comma separated.
-        lyrics_or_description (str, optional): a phrase to find in the lyrics or long description for the item 
-    
+        lyrics_or_description (str, optional): a phrase to find in the lyrics or long description for the item
+
     Returns:
         Dict: as JSON with keys:
         search_id (str): The unique ID of the current search
@@ -408,6 +413,8 @@ def search_for_item(ctx: Context,
             kwargs['search_term'] = title_or_album
         if  artist_name is not None and artist_name != "":
             kwargs['artist'] = artist_name
+        if  person_name is not None and person_name != "":
+            kwargs['person'] = person_name
         if  genre_name is not None and genre_name != "":
             kwargs['genre'] = genre_name
         if  broadcast_release_years is not None and broadcast_release_years != "":

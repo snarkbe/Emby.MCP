@@ -402,6 +402,7 @@ def get_genre_list(e_api_client: object, library_id: str = "") ->dict:
 class getitems_kwargs(TypedDict, total=False):
     search_term: NotRequired[str]
     artist: NotRequired[str]
+    person: NotRequired[str]
     genre: NotRequired[str]
     lyrics: NotRequired[str]
     years: NotRequired[str]
@@ -425,8 +426,10 @@ def get_items(e_api_client: object, user_id: str, library_id: str = "", **kwargs
         e_api_client (obj): The authenticated API client.
         user_id (str): The ID of the user doing the search.
         library_id (str, optional): The ID of the library to filter genres by. If empty, retrieves from all libraries.
-        search_term (str, optional as keyword): The title and/or album to filter items by. 
-        artist (str, optional as keyword): The artist to filter items by.
+        search_term (str, optional as keyword): The title and/or album to filter items by.
+        artist (str, optional as keyword): The music artist to filter items by. Only matches music items.
+        person (str, optional as keyword): The name of a person (actor, director, writer, etc.) to filter items by.
+            Does not match music items.
         genre (str, optional as keyword): The genre to filter items by.
         lyrics (str, optional as keyword): Text that is contained in the Lyrics metadata to filter items by.
         years (str, optional as keyword): The year(s) of release to filter items by. Allows multiple, comma delimeted.
@@ -472,6 +475,9 @@ def get_items(e_api_client: object, user_id: str, library_id: str = "", **kwargs
             case "artist":
                 if value is not None and value != "":
                     kwcooked["artists"] = value
+            case "person":
+                if value is not None and value != "":
+                    kwcooked["person"] = value
             case "genre":
                 if value is not None and value != "":
                     kwcooked["genres"] = value

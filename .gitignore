@@ -141,3 +141,4 @@ cython_debug/
 
 # VS Code settings
 .vscode/
+.mcp.json

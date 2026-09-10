@@ -60,7 +60,7 @@ LLM_MAX_ITEMS   = 100    # Max items per search chunk (0 = no limit). Default: 1
 
 > Tip: create a dedicated Emby user for Emby.MCP to limit its access. The username is still required to resolve which user_id the tools act as.
 
-> Note: `retrieve_scheduled_task_list` and `start_scheduled_task` require that user to be an Emby administrator, as does `scan_library` when scanning every library at once (no `library_id` given). Scanning a single library (`scan_library` with a `library_id`) does not require admin rights. Without the required rights, these tools return an error instead of failing silently.
+> Note: a few tools require that user to be an Emby administrator — see the "Requires Emby admin" column in [Available Tools](#available-tools) below. Without the required rights, they return an error instead of failing silently.
 
 ### Verify the setup
 
@@ -141,44 +141,44 @@ Add to your `mcp.json` (see [VS Code docs](https://code.visualstudio.com/docs/co
 
 ## Available Tools
 
-| Category | Tool | Description | Available in read-only mode |
-|---|---|---|---|
-| Users | `retrieve_user_list` | Lists Emby users and their user IDs | Yes |
-| Library | `retrieve_library_list` | Lists libraries on the Emby server | Yes |
-| Library | `select_library` | Selects the active library for subsequent tools | Yes |
-| Library | `retrieve_current_library` | Shows the currently selected library | Yes |
-| Genre | `retrieve_genre_list` | Lists genres available in the current library | Yes |
-| Item search | `search_for_item` | Searches media items by title/album, artist, genre, year, lyrics | Yes |
-| Item search | `retrieve_next_search_chunk` | Retrieves the next chunk of search results | Yes |
-| Item state | `set_item_favorite` | Marks/unmarks an item as a favorite | No |
-| Item state | `set_item_watched` | Marks an item as watched/unwatched | No |
-| Item state | `rate_item` | Sets/clears your like/dislike rating for an item | No |
-| Playlist | `create_playlist` | Creates a playlist | No |
-| Playlist | `modify_playlist_name` | Renames / redescribes a playlist | No |
-| Playlist | `retrieve_playlist_list` | Lists playlists | Yes |
-| Playlist | `retrieve_playlist_items` | Lists items on a playlist | Yes |
-| Playlist | `add_items_to_playlist` | Adds items to a playlist | No |
-| Playlist | `remove_items_from_playlist` | Removes items from a playlist | No |
-| Playlist | `reorder_items_on_playlist` | Moves an item within a playlist | No |
-| Playlist | `share_playlist_public` | Shares a playlist with all users | No |
-| Playlist | `share_playlist_user_access` | Grants per-user playlist access | No |
-| Playlist | `stop_sharing_playlist` | Stops sharing a playlist | No |
-| Collection | `retrieve_collection_list` | Lists collections ('BoxSets') | Yes |
-| Collection | `retrieve_collection_items` | Lists items directly in a collection | Yes |
-| Collection | `create_collection` | Creates a collection | No |
-| Collection | `add_items_to_collection` | Adds items to a collection | No |
-| Collection | `remove_items_from_collection` | Removes items from a collection | No |
-| Collection | `delete_collection` | Deletes a collection | No |
-| Player | `retrieve_player_list` | Lists media player sessions | Yes |
-| Player | `retrieve_player_queue` | Lists a player's play queue | Yes |
-| Player | `control_media_player` | Sends commands (play, pause, seek, ...) to a player | No |
-| Server & maintenance | `retrieve_server_info` | Shows Emby server info (version, OS, network addresses) | Yes |
-| Server & maintenance | `retrieve_scheduled_task_list` | Lists Emby's scheduled maintenance tasks | Yes |
-| Server & maintenance | `start_scheduled_task` | Starts a scheduled maintenance task immediately | No |
-| Server & maintenance | `scan_library` | Starts a scan of one library, or all libraries | No |
-| Server & maintenance | `refresh_item_metadata` | Refreshes metadata for a single item | No |
+| Category | Tool | Description | Available in read-only mode | Requires Emby admin |
+|---|---|---|---|---|
+| Users | `retrieve_user_list` | Lists Emby users and their user IDs | Yes | No |
+| Library | `retrieve_library_list` | Lists libraries on the Emby server | Yes | No |
+| Library | `select_library` | Selects the active library for subsequent tools | Yes | No |
+| Library | `retrieve_current_library` | Shows the currently selected library | Yes | No |
+| Genre | `retrieve_genre_list` | Lists genres available in the current library | Yes | No |
+| Item search | `search_for_item` | Searches media items by title/album, artist, genre, year, lyrics | Yes | No |
+| Item search | `retrieve_next_search_chunk` | Retrieves the next chunk of search results | Yes | No |
+| Item state | `set_item_favorite` | Marks/unmarks an item as a favorite | No | No |
+| Item state | `set_item_watched` | Marks an item as watched/unwatched | No | No |
+| Item state | `rate_item` | Sets/clears your like/dislike rating for an item | No | No |
+| Playlist | `create_playlist` | Creates a playlist | No | No |
+| Playlist | `modify_playlist_name` | Renames / redescribes a playlist | No | No |
+| Playlist | `retrieve_playlist_list` | Lists playlists | Yes | No |
+| Playlist | `retrieve_playlist_items` | Lists items on a playlist | Yes | No |
+| Playlist | `add_items_to_playlist` | Adds items to a playlist | No | No |
+| Playlist | `remove_items_from_playlist` | Removes items from a playlist | No | No |
+| Playlist | `reorder_items_on_playlist` | Moves an item within a playlist | No | No |
+| Playlist | `share_playlist_public` | Shares a playlist with all users | No | No |
+| Playlist | `share_playlist_user_access` | Grants per-user playlist access | No | No |
+| Playlist | `stop_sharing_playlist` | Stops sharing a playlist | No | No |
+| Collection | `retrieve_collection_list` | Lists collections ('BoxSets') | Yes | No |
+| Collection | `retrieve_collection_items` | Lists items directly in a collection | Yes | No |
+| Collection | `create_collection` | Creates a collection | No | No |
+| Collection | `add_items_to_collection` | Adds items to a collection | No | No |
+| Collection | `remove_items_from_collection` | Removes items from a collection | No | No |
+| Collection | `delete_collection` | Deletes a collection | No | No |
+| Player | `retrieve_player_list` | Lists media player sessions | Yes | No |
+| Player | `retrieve_player_queue` | Lists a player's play queue | Yes | No |
+| Player | `control_media_player` | Sends commands (play, pause, seek, ...) to a player | No | No |
+| Server & maintenance | `retrieve_server_info` | Shows Emby server info (version, OS, network addresses) | Yes | No |
+| Server & maintenance | `retrieve_scheduled_task_list` | Lists Emby's scheduled maintenance tasks | Yes | **Yes** |
+| Server & maintenance | `start_scheduled_task` | Starts a scheduled maintenance task immediately | No | **Yes** |
+| Server & maintenance | `scan_library` | Starts a scan of one library, or all libraries | No | Only scanning *all* libraries (no `library_id`) |
+| Server & maintenance | `refresh_item_metadata` | Refreshes metadata for a single item | No | No |
 
-"Available in read-only mode" tools are always exposed to the MCP client; the rest are hidden when `EMBY_READONLY = True` (see below).
+"Available in read-only mode" tools are always exposed to the MCP client; the rest are hidden when `EMBY_READONLY = True` (see below). "Requires Emby admin" tools need the account behind `EMBY_API_KEY` to be an Emby administrator; without that, they return an error instead of failing silently.
 
 ## Usage
 
